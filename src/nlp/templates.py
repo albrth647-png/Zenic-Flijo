@@ -1,0 +1,141 @@
+"""
+Workflow Determinista — Plantillas de Intención
+Templates para convertir lenguaje natural en definiciones de workflow.
+"""
+
+TEMPLATES = [
+    {
+        "name": "registro_cliente",
+        "label": "Registro de cliente con bienvenida",
+        "description_es": "Cuando un nuevo cliente se registra, guardarlo en CRM y enviar email de bienvenida",
+        "description_en": "When a new customer registers, save them to CRM and send a welcome email",
+        "keywords_es": ["registr", "nuev", "client", "guard", "cre", "agreg", "lead", "contact"],
+        "keywords_en": ["regist", "new", "client", "custom", "save", "creat", "add", "lead", "contact"],
+        "trigger": {"type": "event", "config": {"event": "crm.lead.created"}},
+        "steps": [
+            {"id": 1, "tool": "crm", "action": "create_lead",
+             "params": {"name": "$input.nombre", "email": "$input.email", "phone": "$input.telefono"}},
+            {"id": 2, "tool": "notification", "action": "send_email",
+             "params": {"to": "$input.email", "subject": "¡Bienvenido!", "body": "Hola $input.nombre, gracias por registrarte."}},
+        ],
+    },
+    {
+        "name": "alerta_stock_bajo",
+        "label": "Alerta de stock bajo",
+        "description_es": "Revisar inventario diariamente y alertar cuando productos tengan stock bajo",
+        "description_en": "Check inventory daily and alert when products are low on stock",
+        "keywords_es": ["inventari", "stock", "baj", "alert", "compr", "product", "reorden"],
+        "keywords_en": ["invent", "stock", "low", "alert", "purchas", "product", "reorder"],
+        "trigger": {"type": "schedule", "config": {"cron": "0 9 * * *"}},
+        "steps": [
+            {"id": 1, "tool": "inventory", "action": "get_low_stock_products"},
+            {"id": 2, "tool": "notification", "action": "send_email",
+             "params": {"to": "$settings.admin_email", "subject": "Alerta: Productos con stock bajo", "body": "$output.1"}},
+        ],
+    },
+    {
+        "name": "factura_automatica",
+        "label": "Generar facturas semanales",
+        "description_es": "Generar facturas pendientes cada lunes",
+        "description_en": "Generate pending invoices every Monday",
+        "keywords_es": ["factur", "invoice", "cobr", "pago", "venc", "semanal"],
+        "keywords_en": ["invoic", "bill", "charg", "payment", "due", "weekly"],
+        "trigger": {"type": "schedule", "config": {"cron": "0 9 * * 1"}},
+        "steps": [
+            {"id": 1, "tool": "invoice", "action": "get_overdue_invoices"},
+            {"id": 2, "tool": "notification", "action": "send_email",
+             "params": {"to": "$settings.admin_email", "subject": "Facturas de la semana", "body": "$output.1"}},
+        ],
+    },
+    {
+        "name": "backup_automatico",
+        "label": "Backup automático de base de datos",
+        "description_es": "Hacer respaldo automático de la base de datos cada noche",
+        "description_en": "Automatic database backup every night",
+        "keywords_es": ["backup", "respaldo", "copi", "seguridad", "base", "datos", "noche"],
+        "keywords_en": ["backup", "sav", "copi", "secur", "databas", "night"],
+        "trigger": {"type": "schedule", "config": {"cron": "0 23 * * *"}},
+        "steps": [
+            {"id": 1, "tool": "system", "action": "backup_database"},
+        ],
+    },
+    {
+        "name": "email_cumpleanos",
+        "label": "Email de cumpleaños",
+        "description_es": "Enviar emails de felicitación a clientes en su cumpleaños",
+        "description_en": "Send birthday greeting emails to customers",
+        "keywords_es": ["cumpleañ", "cumple", "felic", "navidad", "aniversari", "salud"],
+        "keywords_en": ["birthday", "happy", "anniversari", "christma", "greet"],
+        "trigger": {"type": "schedule", "config": {"cron": "0 8 * * *"}},
+        "steps": [
+            {"id": 1, "tool": "notification", "action": "send_birthday_emails"},
+        ],
+    },
+    {
+        "name": "lead_avanzar_etapa",
+        "label": "Avanzar lead de etapa",
+        "description_es": "Cuando un lead cambia de etapa, notificar al equipo",
+        "description_en": "When a lead changes stage, notify the team",
+        "keywords_es": ["lead", "etap", "avanz", "oportunidad", "vent", "pipeline", "negoci"],
+        "keywords_en": ["lead", "stage", "advanc", "opportun", "sale", "pipeline", "deal"],
+        "trigger": {"type": "event", "config": {"event": "crm.lead.stage_changed"}},
+        "steps": [
+            {"id": 1, "tool": "notification", "action": "send_email",
+             "params": {"to": "$settings.admin_email", "subject": "Lead avanzó: $input.to_stage", "body": "Lead $input.lead_id cambió de $input.from_stage a $input.to_stage"}},
+        ],
+    },
+    {
+        "name": "factura_vencida",
+        "label": "Alerta de factura vencida",
+        "description_es": "Cuando una factura vence, notificar al cliente",
+        "description_en": "When an invoice becomes overdue, notify the customer",
+        "keywords_es": ["factur", "venc", "moros", "pago", "pendient", "cobranz"],
+        "keywords_en": ["invoic", "overdu", "due", "payment", "pending", "collect"],
+        "trigger": {"type": "event", "config": {"event": "invoice.overdue"}},
+        "steps": [
+            {"id": 1, "tool": "invoice", "action": "get_invoice",
+             "params": {"invoice_id": "$input.invoice_id"}},
+            {"id": 2, "tool": "notification", "action": "send_email",
+             "params": {"to": "$output.1.client_email", "subject": "Factura vencida", "body": "Tu factura está vencida."}},
+        ],
+    },
+    {
+        "name": "producto_agotado",
+        "label": "Alerta de producto agotado",
+        "description_es": "Cuando un producto se agota, notificar al administrador",
+        "description_en": "When a product runs out of stock, notify the admin",
+        "keywords_es": ["product", "agot", "sin", "stock", "cero", "faltant"],
+        "keywords_en": ["product", "out", "stock", "zero", "miss", "unavail"],
+        "trigger": {"type": "event", "config": {"event": "inventory.stock_out"}},
+        "steps": [
+            {"id": 1, "tool": "notification", "action": "send_email",
+             "params": {"to": "$settings.admin_email", "subject": "Producto agotado: $input.name", "body": "El producto $input.name (ID: $input.id) está agotado."}},
+        ],
+    },
+    {
+        "name": "webhook_ejecutar",
+        "label": "Ejecutar workflow por webhook",
+        "description_es": "Ejecutar acciones cuando se recibe un webhook externo",
+        "description_en": "Run actions when an external webhook is received",
+        "keywords_es": ["webhook", "extern", "api", "http", "post", "recib"],
+        "keywords_en": ["webhook", "extern", "api", "http", "post", "receiv"],
+        "trigger": {"type": "webhook", "config": {}},
+        "steps": [
+            {"id": 1, "tool": "notification", "action": "send_notification",
+             "params": {"channel": "log", "recipients": "admin", "message": "Webhook recibido: $input.body"}},
+        ],
+    },
+    {
+        "name": "archivo_nuevo",
+        "label": "Procesar archivo nuevo",
+        "description_es": "Cuando se crea un archivo nuevo en una carpeta, procesarlo",
+        "description_en": "When a new file is created in a folder, process it",
+        "keywords_es": ["archiv", "nuev", "carpet", "directori", "csv", "excel", "sub"],
+        "keywords_en": ["file", "new", "folder", "directori", "csv", "excel", "upload"],
+        "trigger": {"type": "event", "config": {"event": "file.created"}},
+        "steps": [
+            {"id": 1, "tool": "notification", "action": "send_notification",
+             "params": {"channel": "log", "recipients": "admin", "message": "Archivo nuevo: $input.filename"}},
+        ],
+    },
+]

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración — Workflow Determinista</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <main class="container">
+        <div class="page-header"><h1>⚙️ Configuración</h1></div>
+        <div class="settings-layout" style="max-width:600px;margin:0 auto">
+            <div class="section"><h2>🔐 Contraseña</h2>
+                <form id="passwordForm" style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+                    <input type="password" id="currentPassword" placeholder="Contraseña actual">
+                    <input type="password" id="newPassword" placeholder="Nueva contraseña (mín. 6 caracteres)">
+                    <input type="password" id="confirmPassword" placeholder="Confirmar nueva contraseña">
+                    <button type="submit" class="btn btn-primary" style="align-self:flex-start">Cambiar contraseña</button>
+                </form>
+            </div>
+            <div class="section"><h2>📧 Correo SMTP</h2>
+                <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+                    <input type="text" id="setting_smtp_server" data-setting="smtp_server" placeholder="Servidor SMTP (ej: smtp.gmail.com)">
+                    <input type="text" id="setting_smtp_port" data-setting="smtp_port" placeholder="Puerto (ej: 587)">
+                    <input type="text" id="setting_email_user" data-setting="email_user" placeholder="Usuario">
+                    <input type="password" id="setting_email_password" data-setting="email_password" placeholder="Contraseña">
+                    <div style="display:flex;gap:12px">
+                        <button onclick="saveSettings()" class="btn btn-primary">Guardar</button>
+                        <button onclick="testEmail()" class="btn btn-secondary">Probar conexión</button>
+                    </div>
+                </div>
+            </div>
+            <div class="section"><h2>🔑 Licencia</h2>
+                <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+                    <input type="text" id="licenseKey" placeholder="WFD-XXXX-XXXX-XXXX-XXXX">
+                    <button onclick="activateLicense()" class="btn btn-primary" style="align-self:flex-start">Activar licencia</button>
+                    <div id="licenseInfo" class="alert alert-info hidden"></div>
+                </div>
+            </div>
+            <div class="section"><h2>💾 Sistema</h2>
+                <div style="display:flex;gap:12px;margin-top:12px">
+                    <button onclick="doBackup()" class="btn btn-primary">Hacer backup ahora</button>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script>
+    async function loadSettings() {
+        const settings = await (await fetch('/api/settings')).json();
+        ['smtp_server','smtp_port','email_user'].forEach(k => {
+            const el = document.getElementById('setting_' + k);
+            if (el && settings[k]) el.value = settings[k];
+        });
+    }
+    async function saveSettings() {
+        const data = {};
+        document.querySelectorAll('[data-setting]').forEach(el => { data[el.dataset.setting] = el.value; });
+        await fetch('/api/settings', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+        alert('Configuración guardada');
+    }
+    async function testEmail() {
+        const res = await (await fetch('/api/settings/test-email', {method:'POST'})).json();
+        alert(res.message || (res.status === 'ok' ? 'Connexión exitosa' : 'Error'));
+    }
+    async function activateLicense() {
+        const key = document.getElementById('licenseKey').value.trim();
+        if (!key) { alert('Ingresa una License Key'); return; }
+        const res = await (await fetch('/api/license/validate', {method:'POST',
+            headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})})).json();
+        const info = document.getElementById('licenseInfo');
+        info.classList.remove('hidden');
+        if (res.valid) {
+            info.className = 'alert alert-info';
+            info.textContent = `✅ Licencia ${res.type} activada. Expira: ${res.expires_at || 'sin expiración'}`;
+        } else {
+            info.className = 'alert alert-error';
+            info.textContent = `❌ ${res.reason || 'Licencia inválida'}`;
+        }
+    }
+    async function doBackup() {
+        const res = await (await fetch('/api/system/backup', {method:'POST'})).json();
+        alert(res.status === 'completed' ? 'Backup creado' : 'Error');
+    }
+    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const np = document.getElementById('newPassword').value;
+        const cp = document.getElementById('confirmPassword').value;
+        if (np !== cp) { alert('Las contraseñas no coinciden'); return; }
+        const res = await fetch('/api/settings/change-password', {method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({current_password: document.getElementById('currentPassword').value, new_password: np})});
+        const data = await res.json();
+        if (res.ok) alert('Contraseña cambiada');
+        else alert('Error: ' + (data.error || 'desconocido'));
+    });
+    loadSettings();
+    </script>
+</body>
+</html>

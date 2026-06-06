@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat — Workflow Determinista</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <main class="container">
+        <div class="page-header"><h1>💬 Asistente Determinista</h1></div>
+        <div class="chat-layout">
+            <textarea id="chatInput" class="chat-input" placeholder="Describe lo que necesitas automatizar...&#10;&#10;Ej: 'Quiero que cuando un cliente nuevo se registre, se guarde en mi CRM y reciba un correo de bienvenida'" rows="5"></textarea>
+            <button onclick="generateWorkflow()" class="btn btn-primary">Generar Workflow</button>
+            <div id="chatResult" class="chat-result hidden"></div>
+        </div>
+    </main>
+    <script>
+    async function generateWorkflow() {
+        const text = document.getElementById('chatInput').value.trim();
+        if (!text) return;
+        const resultDiv = document.getElementById('chatResult');
+        const btn = resultDiv.previousElementSibling;
+        btn.disabled = true; btn.textContent = 'Analizando...';
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = '<div class="loading">Analizando tu solicitud...</div>';
+        try {
+            const res = await fetch('/api/workflows/chat', {method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({text})
+            });
+            const data = await res.json();
+            if (data.suggestions.length === 0) {
+                resultDiv.innerHTML = `<div class="alert alert-warning">${data.message}</div>`;
+                return;
+            }
+            let html = '<div class="suggestions-list">';
+            data.suggestions.forEach(s => {
+                html += `<div class="suggestion-card" onclick="createFromSuggestion(this)" data-name="${s.template_name}">
+                    <h3>📌 ${s.template_name.replace(/_/g,' ')}</h3>
+                    <div class="confidence">Confianza: ${Math.round(s.confidence*100)}%</div>
+                    <p>${s.description || ''}</p>
+                    <small>🔁 ${s.trigger.type} · ${s.steps.length} pasos</small>
+                    <button class="btn btn-sm btn-primary" style="margin-top:8px">✅ Crear workflow</button>
+                </div>`;
+            });
+            html += '</div>';
+            resultDiv.innerHTML = html;
+        } catch(e) {
+            resultDiv.innerHTML = '<div class="alert alert-error">Error de conexión</div>';
+        }
+        btn.disabled = false; btn.textContent = 'Generar Workflow';
+    }
+    async function createFromSuggestion(card) {
+        const name = card.dataset.name;
+        const btn = card.querySelector('button');
+        btn.textContent = 'Creando...'; btn.disabled = true;
+        try {
+            const res = await fetch('/api/workflows', {method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({
+                    name: name.replace(/_/g,' '),
+                    description: card.querySelector('p')?.textContent || '',
+                    trigger_type: 'event',
+                    trigger_config: {},
+                    steps: []
+                })
+            });
+            const data = await res.json();
+            if (res.ok) window.location.href = `/editor?wf=${data.id}`;
+            else alert('Error: ' + (data.error || 'desconocido'));
+        } catch(e) { alert('Error de conexión'); }
+    }
+    </script>
+</body>
+</html>
