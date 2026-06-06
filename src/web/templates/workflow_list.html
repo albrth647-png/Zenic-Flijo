@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflows — Workflow Determinista</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <main class="container">
+        <div class="page-header"><h1>📋 Mis Workflows</h1><a href="/chat" class="btn btn-primary">+ Nuevo</a></div>
+        <div id="workflowList"><p class="loading">Cargando...</p></div>
+    </main>
+    <script src="/static/app.js"></script>
+    <script>loadWorkflowList();</script>
+</body>
+</html>

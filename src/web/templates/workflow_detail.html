@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalle — Workflow Determinista</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <main class="container">
+        <div class="page-header">
+            <h1 id="wfName">Cargando...</h1>
+            <div><a href="/editor?wf={{ workflow_id }}" class="btn">✏️ Editar</a> <a href="/workflows" class="btn">← Volver</a></div>
+        </div>
+        <div class="detail-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+            <div class="stat-card"><div class="stat-label">Estado</div><div id="wfStatus" style="font-size:1.2rem;font-weight:600;margin-top:4px">-</div></div>
+            <div class="stat-card"><div class="stat-label">Trigger</div><div id="wfTrigger" style="font-size:.85rem;color:var(--text-muted);margin-top:4px">-</div></div>
+        </div>
+        <div class="section"><h2>Pasos</h2><pre id="wfSteps" style="background:var(--bg);padding:16px;border-radius:var(--radius);overflow:auto;font-size:.85rem;color:var(--text-muted)">-</pre></div>
+        <div class="section"><h2>📊 Historial</h2><div id="wfHistory"><p class="loading">Cargando...</p></div></div>
+    </main>
+    <script src="/static/app.js"></script>
+    <script>loadWorkflowDetail({{ workflow_id }});</script>
+</body>
+</html>

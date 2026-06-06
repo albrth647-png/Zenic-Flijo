@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — Workflow Determinista</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <main class="container">
+        <div class="page-header">
+            <h1>📊 Dashboard</h1>
+            <a href="/chat" class="btn btn-primary">+ Nuevo Workflow</a>
+        </div>
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><div class="stat-value" id="statTotal">-</div><div class="stat-label">Total</div></div>
+            <div class="stat-card active"><div class="stat-value" id="statActive">-</div><div class="stat-label">Activos</div></div>
+            <div class="stat-card error"><div class="stat-value" id="statError">-</div><div class="stat-label">Errores</div></div>
+            <div class="stat-card paused"><div class="stat-value" id="statPaused">-</div><div class="stat-label">Pausados</div></div>
+        </div>
+        <div class="section">
+            <h2>🕐 Últimas ejecuciones</h2>
+            <div class="executions-list" id="executionsList">
+                <p class="loading">Cargando...</p>
+            </div>
+        </div>
+        <div class="section">
+            <h2>⚡ Sugerencias rápidas</h2>
+            <div class="suggestions-grid" id="suggestionsGrid"></div>
+        </div>
+    </main>
+    <script src="/static/app.js"></script>
+    <script>
+        loadDashboard();
+    </script>
+</body>
+</html>
