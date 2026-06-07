@@ -3,8 +3,6 @@ Workflow Determinista — CRM Repository
 """
 import json
 from datetime import datetime
-from typing import Any
-
 from src.data.database_manager import DatabaseManager
 
 

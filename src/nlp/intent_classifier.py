@@ -3,8 +3,6 @@ Workflow Determinista — IntentClassifier
 Clasificador determinista por keywords. NO usa AI. NO usa LLM.
 """
 import re
-from typing import Any
-
 from src.nlp.bilingual_router import BilingualRouter
 from src.nlp.templates import TEMPLATES
 from src.utils.logger import setup_logging

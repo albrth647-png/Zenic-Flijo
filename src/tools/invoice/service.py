@@ -22,6 +22,22 @@ class InvoiceService:
                        discount: float = 0.0, due_days: int = 30,
                        notes: str | None = None) -> dict:
         items = items or []
+        # Asegurar tipos numéricos para evitar errores si llegan como string
+        safe_items = []
+        for item in items:
+            safe_item = dict(item)
+            try:
+                q = safe_item.get("quantity", 1)
+                safe_item["quantity"] = int(q) if not isinstance(q, int) else q
+            except (ValueError, TypeError):
+                safe_item["quantity"] = 1
+            try:
+                p = safe_item.get("unit_price", 0)
+                safe_item["unit_price"] = float(p) if not isinstance(p, (int, float)) else p
+            except (ValueError, TypeError):
+                safe_item["unit_price"] = 0
+            safe_items.append(safe_item)
+        items = safe_items
         subtotal = sum(item.get("quantity", 1) * item.get("unit_price", 0) for item in items)
         tax_amount = subtotal * tax_rate
         total = subtotal + tax_amount - discount

@@ -3,8 +3,6 @@ Workflow Determinista — EntityExtractor
 Extrae entidades del texto usando patrones regex.
 """
 import re
-from typing import Any
-
 
 class EntityExtractor:
     PATTERNS = {

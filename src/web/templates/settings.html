@@ -58,6 +58,32 @@
 
             <hr class="section-divider">
 
+            <!-- WhatsApp Section -->
+            <div class="section-card">
+                <h2>💬 WhatsApp Cloud API</h2>
+                <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:12px">
+                    Configura la API de WhatsApp Business para enviar mensajes desde tus workflows.
+                    Necesitas un <strong>Token de Acceso Permanente</strong> y tu <strong>Phone Number ID</strong>
+                    de <a href="https://developers.facebook.com/apps/" target="_blank">Meta for Developers</a>.
+                </p>
+                <div style="display:flex;flex-direction:column;gap:12px">
+                    <input type="password" id="setting_whatsapp_token" data-setting="whatsapp_token" placeholder="Token de Acceso Permanente">
+                    <input type="text" id="setting_whatsapp_phone_number_id" data-setting="whatsapp_phone_number_id" placeholder="Phone Number ID (ej: 123456789)">
+                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                        <button onclick="saveWhatsApp()" class="btn btn-primary">💾 Guardar</button>
+                        <button onclick="testWhatsApp()" class="btn btn-secondary">📱 Probar envío</button>
+                        <span id="whatsappStatus" style="font-size:0.85rem;color:var(--text-muted)"></span>
+                    </div>
+                    <div id="whatsappTestNumber" class="hidden" style="display:none;flex-direction:column;gap:8px;margin-top:8px">
+                        <input type="text" id="whatsappTestPhone" placeholder="Número de prueba (+521234567890)">
+                        <button onclick="sendWhatsAppTest()" class="btn btn-sm btn-success">📤 Enviar mensaje de prueba</button>
+                        <div id="whatsappTestResult" style="font-size:0.85rem"></div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
             <!-- Webhook API Key Section -->
             <div class="section-card">
                 <h2>🔗 API Key (Webhooks)</h2>
@@ -379,6 +405,71 @@
     });
 
     // ============================================
+    // WhatsApp settings
+    // ============================================
+    async function loadWhatsAppSettings() {
+        const res = await api('/api/settings/whatsapp');
+        if (!res) return;
+        const status = document.getElementById('whatsappStatus');
+        if (res.whatsapp_configured) {
+            status.textContent = '✅ Configurado';
+            status.style.color = 'var(--success)';
+        } else {
+            status.textContent = '⚠️ No configurado';
+            status.style.color = 'var(--warning)';
+        }
+    }
+
+    async function saveWhatsApp() {
+        const token = document.getElementById('setting_whatsapp_token').value.trim();
+        const phoneId = document.getElementById('setting_whatsapp_phone_number_id').value.trim();
+        if (!token || !phoneId) {
+            showToast('Ingresa el Token y el Phone Number ID', 'warning');
+            return;
+        }
+        const res = await api('/api/settings/whatsapp', {
+            method: 'PUT',
+            body: JSON.stringify({token, phone_number_id: phoneId}),
+        });
+        if (res !== null) {
+            showToast('✅ WhatsApp configurado', 'success');
+            loadWhatsAppSettings();
+        }
+    }
+
+    function testWhatsApp() {
+        const div = document.getElementById('whatsappTestNumber');
+        if (div.style.display === 'flex') {
+            div.style.display = 'none';
+        } else {
+            div.style.display = 'flex';
+        }
+    }
+
+    async function sendWhatsAppTest() {
+        const phone = document.getElementById('whatsappTestPhone').value.trim();
+        if (!phone) {
+            showToast('Ingresa un número de prueba', 'warning');
+            return;
+        }
+        const resultDiv = document.getElementById('whatsappTestResult');
+        resultDiv.innerHTML = '<span style="color:var(--primary)">Enviando...</span>';
+        const res = await api('/api/settings/whatsapp/test', {
+            method: 'POST',
+            body: JSON.stringify({test_number: phone}),
+        });
+        if (res) {
+            if (res.status === 'sent') {
+                resultDiv.innerHTML = '<span style="color:var(--success)">✅ Mensaje enviado correctamente</span>';
+                showToast('✅ Mensaje WhatsApp enviado', 'success');
+            } else {
+                resultDiv.innerHTML = `<span style="color:var(--error)">❌ ${res.error || res.message || 'Error'}</span>`;
+                showToast('❌ Error al enviar: ' + (res.error || res.message), 'error');
+            }
+        }
+    }
+
+    // ============================================
     // Scroll to license section if hash
     // ============================================
     if (window.location.hash === '#license') {
@@ -391,6 +482,7 @@
     // Initialize
     // ============================================
     loadSettingsPage();
+    loadWhatsAppSettings();
     </script>
 </body>
 </html>

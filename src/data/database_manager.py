@@ -2,10 +2,14 @@
 Workflow Determinista — Database Manager (Singleton SQLite)
 Gestión de UNA sola base de datos: workflow_determinista.db
 """
+import os
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+import json as _json
+from typing import TypeVar
+
+T = TypeVar("T")
 
 from src.config import DB_PATH, DB_WAL_MODE
 from src.utils.logger import setup_logging
@@ -17,7 +21,7 @@ class DatabaseManager:
     """Singleton que gestiona la conexión a SQLite unificada."""
 
     _instance: "DatabaseManager | None" = None
-    _lock = threading.Lock()
+    _lock = threading.RLock()
 
     def __new__(cls) -> "DatabaseManager":
         if cls._instance is None:
@@ -30,10 +34,14 @@ class DatabaseManager:
     def __init__(self) -> None:
         if self._initialized:
             return
-        self._initialized = True
-        self._db_path: Path = DB_PATH
-        self._local = threading.local()
-        self._init_database()
+        with self._lock:
+            if self._initialized:
+                return
+            self._initialized = True
+            self._db_path: Path = DB_PATH
+            self._local = threading.local()
+            self._max_audit_logs = int(os.environ.get("WFD_MAX_AUDIT_LOGS", "10000"))
+            self._init_database()
 
     # ── Conexión ─────────────────────────────────────────────
 
@@ -45,6 +53,8 @@ class DatabaseManager:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
             self._local.connection = conn
+            if self._initialized:
+                logger.debug("Nueva conexión SQLite creada con foreign_keys=ON")
         return self._local.connection
 
     def close_connection(self) -> None:
@@ -284,14 +294,13 @@ class DatabaseManager:
 
     # ── Settings helpers ─────────────────────────────────────
 
-    def get_setting(self, key: str, default: Any = None) -> Any:
+    def get_setting(self, key: str, default: T | None = None) -> str | int | float | bool | list | dict | None:
         """Obtiene un valor de settings con parseo JSON automático."""
         row = self.fetchone("SELECT value FROM settings WHERE key = ?", (key,))
         if not row:
             return default
         raw = row["value"]
         # Intentar parsear como JSON para tipos booleanos, numéricos, listas
-        import json as _json
         try:
             return _json.loads(raw)
         except (_json.JSONDecodeError, TypeError):
@@ -308,11 +317,22 @@ class DatabaseManager:
     # ── Audit helpers ────────────────────────────────────────
 
     def audit(self, event: str, details: str | None = None, ip_address: str | None = None) -> None:
-        """Registra un evento de auditoría."""
+        """Registra un evento de auditoría y purga registros viejos si excede el límite."""
         self.execute(
             "INSERT INTO audit_log (event, details, ip_address) VALUES (?, ?, ?)",
             (event, details, ip_address),
         )
+        # Purge audit logs beyond max threshold (probabilistic: 10% chance to avoid perf hit)
+        import random
+        if random.random() < 0.1:
+            count = self.fetchone("SELECT COUNT(*) as c FROM audit_log")
+            if count and count["c"] > self._max_audit_logs:
+                delete_count = count["c"] - self._max_audit_logs
+                self.execute(
+                    "DELETE FROM audit_log WHERE id IN (SELECT id FROM audit_log ORDER BY created_at ASC LIMIT ?)",
+                    (delete_count,),
+                )
+                logger.info(f"Audit log purged: {delete_count} registros eliminados")
         self.commit()
 
     # ── Cleanup ──────────────────────────────────────────────

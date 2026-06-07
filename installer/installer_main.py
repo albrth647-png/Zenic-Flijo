@@ -567,7 +567,7 @@ class InstallerWizard(tk.Tk):
     def _open_browser(self):
         try:
             webbrowser.open(APP_URL)
-        except Exception:
+        except OSError:
             pass
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -886,11 +886,11 @@ def _install_step_start_server(self):
         time.sleep(2)
         try:
             webbrowser.open(APP_URL)
-        except Exception:
+        except OSError:
             pass
 
         self._update_progress(100, self._txt("progress_done"))
-    except Exception as exc:
+    except (OSError, subprocess.CalledProcessError) as exc:
         raise InstallError(f"{self._txt('error_server')}: {exc}")
 
 

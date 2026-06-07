@@ -3,11 +3,10 @@ Workflow Determinista — ScheduleWorker
 Worker que revisa cada 60s si hay workflows programados para ejecutarse.
 Usa threading.Timer recursivo. Sin APScheduler. Zero dependencias externas.
 """
+import sqlite3
 import threading
 import time
 from datetime import datetime
-from typing import Any
-
 from src.events.bus import EventBus
 from src.workflow.repository import WorkflowRepository
 from src.utils.helpers import parse_cron_expression, should_run_now
@@ -79,13 +78,13 @@ class ScheduleWorker:
                         })
                         executed += 1
 
-                except Exception as wf_error:
+                except (ValueError, KeyError, TypeError) as wf_error:
                     logger.error(f"Error procesando workflow programado {wf.id}: {wf_error}")
 
             if executed > 0:
                 logger.info(f"ScheduleWorker: {executed} workflow(s) ejecutado(s)")
 
-        except Exception as e:
+        except (OSError, ValueError, sqlite3.Error) as e:
             logger.error(f"Error en ScheduleWorker tick: {e}")
 
         finally:

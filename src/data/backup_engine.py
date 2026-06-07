@@ -5,11 +5,10 @@ Backup automático programado con soporte para directorios externos (USB).
 import datetime
 import os
 import shutil
+import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any
-
 from src.data.database_manager import DatabaseManager
 from src.utils.logger import setup_logging
 
@@ -93,7 +92,7 @@ class BackupEngine:
             self._cleanup_old_backups(backup_dir)
             logger.info(f"Backup automático: {path}")
 
-        except Exception as e:
+        except (OSError, sqlite3.Error, ValueError) as e:
             logger.error(f"Error en backup automático: {e}")
 
         finally:

@@ -79,7 +79,7 @@ class FileWatcher(threading.Thread):
                             config["pattern"],
                             config["recursive"],
                         )
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Error en FileWatcher: {e}")
 
             time.sleep(self._interval)
@@ -157,5 +157,7 @@ class FileWatcher(threading.Thread):
         if self._callback:
             try:
                 self._callback(event_type, data)
+            # El callback puede lanzar cualquier excepción — la capturamos para
+            # que el FileWatcher no se detenga por un error en un callback.
             except Exception as e:
                 logger.error(f"Error en callback de FileWatcher: {e}")

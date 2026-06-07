@@ -3,7 +3,7 @@ Workflow Determinista — ErrorHandler
 Maneja reintentos (retry), acciones de respaldo (fallback) y cola de mensajes fallidos.
 """
 import time
-from typing import Any, Callable
+from typing import Callable
 
 from src.utils.logger import setup_logging
 from src.config import ERROR_MAX_RETRIES, ERROR_BASE_DELAY_SECONDS, ERROR_RETRY_MULTIPLIER, ERROR_USE_FALLBACK

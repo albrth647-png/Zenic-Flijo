@@ -2,9 +2,8 @@
 Workflow Determinista — WorkflowEngine
 Motor principal que ejecuta workflows paso a paso manejando su ciclo de vida completo.
 """
+import threading
 import time
-from typing import Any
-
 from src.workflow.step_executor import StepExecutor, StepResult
 from src.workflow.condition_evaluator import ConditionEvaluator
 from src.workflow.branch_handler import BranchHandler
@@ -42,7 +41,7 @@ class ExecutionResult:
 
 class WorkflowEngine:
     """
-    Motor de ejecución de workflows.
+    Motor de ejecución de workflows (Singleton).
     
     Ciclo de vida de un workflow:
     CREADO → ACTIVO → EN EJECUCIÓN → COMPLETADO
@@ -51,19 +50,40 @@ class WorkflowEngine:
              → ARCHIVADO
     """
 
+    _instance: "WorkflowEngine | None" = None
+    _lock = threading.RLock()
+
+    def __new__(cls) -> "WorkflowEngine":
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
-        self._repository = WorkflowRepository()
-        self._step_executor = StepExecutor()
-        self._condition_evaluator = ConditionEvaluator()
-        self._branch_handler = BranchHandler()
-        self._loop_handler = LoopHandler()
-        self._error_handler = ErrorHandler()
-        self._tools: dict[str, Any] = {}
+        if hasattr(self, "_initialized") and self._initialized:
+            return
+        with self._lock:
+            if hasattr(self, "_initialized") and self._initialized:
+                return
+            self._initialized = True
+            self._repository = WorkflowRepository()
+            self._step_executor = StepExecutor()
+            self._condition_evaluator = ConditionEvaluator()
+            self._branch_handler = BranchHandler()
+            self._loop_handler = LoopHandler()
+            self._error_handler = ErrorHandler()
+            self._tools: dict[str, object] = {}
 
     # ── Registro de herramientas ──────────────────────────────
 
-    def register_tool(self, tool_name: str, tool_instance: Any) -> None:
-        """Registra una herramienta de negocio en el motor."""
+    def register_tool(self, tool_name: str, tool_instance: object) -> None:
+        """Registra una herramienta de negocio en el motor.
+        
+        tool_instance debe ser un objeto con métodos llamables que coincidan
+        con las acciones definidas en los pasos del workflow.
+        """
         self._tools[tool_name] = tool_instance
         self._step_executor.register_tool(tool_name, tool_instance)
         logger.info(f"Tool registrada: {tool_name}")
@@ -295,6 +315,13 @@ class WorkflowEngine:
         self._remove_subscriptions(workflow_id)
         logger.info(f"Workflow {workflow_id} archivado")
         return True
+
+    # ── Reset para testing ──────────────────────────────
+
+    @classmethod
+    def _reset(cls) -> None:
+        """Reinicia el singleton (útil para tests)."""
+        cls._instance = None
 
     def get_status(self, workflow_id: int) -> dict:
         """Retorna el estado actual de un workflow + última ejecución."""

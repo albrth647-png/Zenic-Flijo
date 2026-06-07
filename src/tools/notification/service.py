@@ -1,6 +1,7 @@
 """
 Workflow Determinista — Notification Service
 """
+import smtplib
 from datetime import datetime
 from src.data.database_manager import DatabaseManager
 from src.utils.logger import setup_logging
@@ -37,7 +38,7 @@ class NotificationService:
 
             logger.info(f"Email enviado a {to}: {subject}")
             return {"status": "sent", "to": to, "subject": subject}
-        except Exception as e:
+        except (smtplib.SMTPException, OSError, ValueError) as e:
             logger.error(f"Error enviando email a {to}: {e}")
             return {"status": "failed", "error": str(e)}
 
@@ -95,10 +96,123 @@ class NotificationService:
                     self._db.get_setting("email_password", ""),
                 )
                 return {"status": "ok", "message": "Conexión SMTP exitosa"}
-        except Exception as e:
+        except (smtplib.SMTPException, OSError, ValueError) as e:
             return {"status": "error", "message": str(e)}
+
+    # ── WhatsApp Cloud API ────────────────────────────────────
+
+    def send_whatsapp(self, to: str, message: str) -> dict:
+        """Envía un mensaje de texto vía WhatsApp Cloud API."""
+        token = self._db.get_setting("whatsapp_token")
+        phone_number_id = self._db.get_setting("whatsapp_phone_number_id")
+
+        if not token or not phone_number_id:
+            return {"status": "error", "message": "WhatsApp no configurado. Ve a Configuración."}
+
+        try:
+            import requests
+            url = f"https://graph.facebook.com/v22.0/{phone_number_id}/messages"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": to,
+                "type": "text",
+                "text": {"body": message},
+            }
+            resp = requests.post(url, headers=headers, json=payload, timeout=15)
+            data = resp.json()
+
+            if resp.status_code == 200 and data.get("messages"):
+                msg_id = data["messages"][0].get("id", "")
+                logger.info(f"WhatsApp enviado a {to}: {msg_id}")
+                return {"status": "sent", "to": to, "message_id": msg_id}
+            else:
+                error = data.get("error", {}).get("message", str(data))
+                logger.error(f"WhatsApp error a {to}: {error}")
+                return {"status": "failed", "to": to, "error": error}
+
+        except ImportError:
+            return {"status": "error", "message": "requests library no instalada"}
+        except requests.exceptions.ConnectionError:
+            return {"status": "failed", "message": "Error de conexión con WhatsApp API"}
+        except requests.exceptions.Timeout:
+            return {"status": "failed", "message": "Timeout conectando con WhatsApp API"}
+        except Exception as e:
+            logger.error(f"WhatsApp exception: {e}")
+            return {"status": "failed", "message": str(e)}
+
+    def send_whatsapp_template(self, to: str, template_name: str,
+                                language_code: str = "es",
+                                components: list[dict] | None = None) -> dict:
+        """Envía un mensaje template (para fuera de ventana 24h)."""
+        token = self._db.get_setting("whatsapp_token")
+        phone_number_id = self._db.get_setting("whatsapp_phone_number_id")
+
+        if not token or not phone_number_id:
+            return {"status": "error", "message": "WhatsApp no configurado"}
+
+        try:
+            import requests
+            url = f"https://graph.facebook.com/v22.0/{phone_number_id}/messages"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            payload: dict = {
+                "messaging_product": "whatsapp",
+                "to": to,
+                "type": "template",
+                "template": {
+                    "name": template_name,
+                    "language": {"code": language_code},
+                },
+            }
+            if components:
+                payload["template"]["components"] = components
+
+            resp = requests.post(url, headers=headers, json=payload, timeout=15)
+            data = resp.json()
+
+            if resp.status_code == 200 and data.get("messages"):
+                msg_id = data["messages"][0].get("id", "")
+                logger.info(f"WhatsApp template enviado a {to}: {template_name}")
+                return {"status": "sent", "to": to, "message_id": msg_id}
+            else:
+                error = data.get("error", {}).get("message", str(data))
+                logger.error(f"WhatsApp template error: {error}")
+                return {"status": "failed", "error": error}
+
+        except requests.exceptions.ConnectionError:
+            return {"status": "failed", "message": "Error de conexión con WhatsApp API"}
+        except Exception as e:
+            logger.error(f"WhatsApp template exception: {e}")
+            return {"status": "failed", "message": str(e)}
+
+    def configure_whatsapp(self, token: str, phone_number_id: str) -> bool:
+        """Configura credenciales de WhatsApp Cloud API."""
+        self._db.set_setting("whatsapp_token", token)
+        self._db.set_setting("whatsapp_phone_number_id", phone_number_id)
+        logger.info("Configuración WhatsApp guardada")
+        return True
+
+    def get_whatsapp_status(self) -> dict:
+        """Retorna estado de la configuración WhatsApp."""
+        token = self._db.get_setting("whatsapp_token")
+        phone_id = self._db.get_setting("whatsapp_phone_number_id")
+        return {
+            "whatsapp_configured": bool(token and phone_id),
+            "has_token": bool(token),
+            "has_phone_id": bool(phone_id),
+        }
 
     def get_status(self) -> dict:
         return {
             "smtp_configured": bool(self._db.get_setting("smtp_server")),
+            "whatsapp_configured": bool(
+                self._db.get_setting("whatsapp_token")
+                and self._db.get_setting("whatsapp_phone_number_id")
+            ),
         }

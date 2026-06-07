@@ -3,8 +3,6 @@ Workflow Determinista — ConditionEvaluator
 Evalúa condiciones en runtime usando un parser recursivo descendente seguro.
 NUNCA usa eval() ni exec().
 """
-from typing import Any
-
 from src.utils.helpers import safe_get
 from src.utils.logger import setup_logging
 
@@ -29,7 +27,7 @@ class ConditionEvaluator:
 
     SUPPORTED_OPERATORS = ["==", "!=", ">=", "<=", ">", "<", "in", "contains"]
 
-    def evaluate(self, condition: str, context: dict[str, Any]) -> bool:
+    def evaluate(self, condition: str, context: dict[str, object]) -> bool:
         """
         Evalúa una condición contra el contexto dado.
         
@@ -50,7 +48,7 @@ class ConditionEvaluator:
             tokens = self._tokenize(condition)
             ast = self._parse(tokens)
             return self._eval_ast(ast, context)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, IndexError) as e:
             logger.error(f"Error evaluando condición '{condition}': {e}")
             raise ValueError(f"Error evaluando condición: {e}")
 
@@ -228,7 +226,7 @@ class ConditionEvaluator:
 
         raise ValueError(f"Nodo AST desconocido: {ast}")
 
-    def _resolve_value(self, node: dict, context: dict) -> Any:
+    def _resolve_value(self, node: dict, context: dict) -> bool | str | int | float | list | None:
         """Resuelve un nodo valor a su valor concreto."""
         if node["type"] == "string":
             return node["value"]
@@ -251,8 +249,8 @@ class ConditionEvaluator:
             return None
         return None
 
-    def _apply_operator(self, left: Any, op: str, right: Any) -> bool:
-        """Aplica un operador de comparación."""
+    def _apply_operator(self, left: object, op: str, right: object) -> bool:
+        """Aplica un operador de comparación usando object en vez de Any."""
         if op == "==":
             return left == right
         elif op == "!=":

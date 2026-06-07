@@ -7,8 +7,6 @@ import hmac
 import json
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any
-
 from src.data.database_manager import DatabaseManager
 from src.events.bus import EventBus
 from src.utils.logger import setup_logging
@@ -67,15 +65,14 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "Body debe ser JSON válido"})
             return
 
-        # Publicar evento
+        # Publicar evento — pasar body directamente a $input para resolución de variables
         try:
             bus = self.event_bus or EventBus()
-            results = bus.publish("webhook.received", {
-                "workflow_id": workflow_id,
-                "body": data,
-                "headers": dict(self.headers),
-                "method": "POST",
-            })
+            # Pasar datos planos + workflow_id para que $input.nombre funcione
+            # y EventBus pueda filtrar por workflow_id si es necesario
+            webhook_data = dict(data)
+            webhook_data["_workflow_id"] = workflow_id
+            results = bus.publish("webhook.received", webhook_data)
 
             self._send_json(200, {
                 "status": "processed",
@@ -134,11 +131,17 @@ class WebhookServer:
         WebhookHandler.event_bus = EventBus()
         WebhookHandler.db = DatabaseManager()
 
-        self._server = HTTPServer(("127.0.0.1", self._port), WebhookHandler)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
-        self._thread.start()
-        self._running = True
-        logger.info(f"WebhookServer iniciado en puerto {self._port}")
+        try:
+            # Permitir reuso inmediato del puerto tras reinicio (antes del bind)
+            HTTPServer.allow_reuse_address = True
+            self._server = HTTPServer(("127.0.0.1", self._port), WebhookHandler)
+            self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+            self._thread.start()
+            self._running = True
+            logger.info(f"WebhookServer iniciado en puerto {self._port}")
+        except OSError as e:
+            logger.warning(f"WebhookServer no pudo iniciarse en puerto {self._port}: {e}")
+            logger.warning("Los webhooks no estarán disponibles. Los demás servicios continúan funcionando.")
 
     def stop(self) -> None:
         """Detiene el servidor de webhooks."""

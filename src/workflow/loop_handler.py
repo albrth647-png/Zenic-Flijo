@@ -2,8 +2,6 @@
 Workflow Determinista — LoopHandler
 Maneja bucles (for/while/for each) en workflows.
 """
-from typing import Any
-
 from src.utils.logger import setup_logging
 
 logger = setup_logging(__name__)

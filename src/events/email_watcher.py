@@ -4,7 +4,7 @@ Monitorea un buzón IMAP en busca de correos entrantes.
 """
 import threading
 import time
-from typing import Any, Callable
+from typing import Callable
 
 from src.data.database_manager import DatabaseManager
 from src.utils.logger import setup_logging
@@ -40,7 +40,7 @@ class EmailWatcher(threading.Thread):
         while self._running:
             try:
                 self._check_config_and_poll()
-            except Exception as e:
+            except (ConnectionError, OSError, ImportError, ValueError) as e:
                 logger.warning(f"Error en EmailWatcher: {e}")
 
             time.sleep(self._interval)
@@ -139,7 +139,7 @@ class EmailWatcher(threading.Thread):
 
         except ImportError:
             logger.warning("imaplib no disponible en esta plataforma")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.warning(f"Error conectando a IMAP: {e}")
 
     def _emit(self, event_type: str, data: dict) -> None:

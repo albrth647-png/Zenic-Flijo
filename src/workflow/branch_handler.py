@@ -2,8 +2,6 @@
 Workflow Determinista — BranchHandler
 Maneja bifurcaciones condicionales (if/else/switch) en workflows.
 """
-from typing import Any
-
 from src.workflow.condition_evaluator import ConditionEvaluator
 from src.utils.logger import setup_logging
 

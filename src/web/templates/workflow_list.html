@@ -11,8 +11,12 @@
     <main class="container">
         <div class="page-header">
             <h1>📋 Mis Workflows</h1>
-            <a href="/editor" class="btn btn-primary">+ Nuevo Workflow</a>
+            <div class="header-actions">
+                <button onclick="importWorkflow()" class="btn">📥 Importar</button>
+                <a href="/editor" class="btn btn-primary">+ Nuevo Workflow</a>
+            </div>
         </div>
+        <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImportFile(event)">
 
         <!-- Filter Bar -->
         <div class="filter-bar" id="filterBar">
@@ -108,10 +112,11 @@
                         <td style="font-size:.85rem;color:var(--text-muted)">${triggerLabel(w.trigger_type, w.trigger_config)}</td>
                         <td style="font-size:.85rem;color:var(--text-muted)">${w.last_execution ? formatTime(w.last_execution.started_at) : '—'}</td>
                         <td class="actions-cell">
-                            <a href="/editor?wf=${w.id}" class="btn btn-sm" title="Editar">✏️ Editar</a>
+                            <a href="/editor?wf=${w.id}" class="btn btn-sm" title="Editar">✏️</a>
                             <button onclick="toggleWorkflow(${w.id}, '${w.status}')" class="btn btn-sm">
-                                ${w.status === 'active' ? '⏸ Pausar' : '▶️ Activar'}
+                                ${w.status === 'active' ? '⏸' : '▶️'}
                             </button>
+                            <button onclick="exportWorkflow(${w.id})" class="btn btn-sm" title="Exportar JSON">📤</button>
                             <button onclick="deleteWorkflow(${w.id})" class="btn btn-sm btn-danger" title="Eliminar">🗑</button>
                         </td>
                     </tr>
@@ -176,6 +181,47 @@
         if (!confirm('¿Eliminar este workflow?')) return;
         await api(`/api/workflows/${id}`, { method: 'DELETE' });
         loadWorkflowList();
+    }
+
+    async function exportWorkflow(id) {
+        const data = await api(`/api/workflows/${id}/export`);
+        if (!data) return;
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `workflow-${id}-${(data.name || 'export').replace(/[^a-zA-Z0-9]/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(`Workflow "${data.name}" exportado ✅`, 'success');
+    }
+
+    function importWorkflow() {
+        document.getElementById('importFileInput').click();
+    }
+
+    async function handleImportFile(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        event.target.value = '';
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            if (!data.name) {
+                showToast('Archivo JSON inválido: falta el nombre del workflow', 'error');
+                return;
+            }
+            const result = await api('/api/workflows/import', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+            if (result?.id) {
+                showToast(`Workflow "${result.name}" importado ✅`, 'success');
+                loadWorkflowList();
+            }
+        } catch (e) {
+            showToast('Error al importar: ' + e.message, 'error');
+        }
     }
 
     loadWorkflowList();

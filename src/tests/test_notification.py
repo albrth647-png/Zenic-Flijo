@@ -110,7 +110,8 @@ class TestNotificationService:
             username="user@test.com",
             password="testpass",
         )
-        mock_smtp_class.side_effect = Exception("Connection refused")
+        import smtplib
+        mock_smtp_class.side_effect = OSError("Connection refused")
 
         result = notification_service.test_connection()
         assert result["status"] == "error"
@@ -125,7 +126,8 @@ class TestNotificationService:
             username="user@test.com",
             password="testpass",
         )
-        mock_smtp_class.side_effect = Exception("SMTP server unavailable")
+        import smtplib
+        mock_smtp_class.side_effect = smtplib.SMTPException("SMTP server unavailable")
 
         result = notification_service.send_email(
             to="fail@example.com",

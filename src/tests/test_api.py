@@ -40,7 +40,7 @@ def app_client(db_manager, monkeypatch):
 
     # Set up admin password in the test database
     password = "testpass123"
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=4)).decode()
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10)).decode()
     db_manager.set_setting("admin_password_hash", hashed)
 
     # Reset rate limiting state
