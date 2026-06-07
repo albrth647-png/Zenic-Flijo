@@ -3,8 +3,6 @@ Workflow Determinista — DatabaseTrigger
 Detecta cambios en tablas SQLite y emite eventos correspondientes.
 """
 import json
-from typing import Any
-
 from src.data.database_manager import DatabaseManager
 from src.events.bus import EventBus
 from src.utils.logger import setup_logging
@@ -125,7 +123,7 @@ class DatabaseTrigger:
                 self._db.commit()
                 results.append({"event_id": event["id"], "event_type": event["event_type"], "status": "processed"})
 
-            except Exception as e:
+            except (KeyError, ValueError, TypeError) as e:
                 logger.error(f"Error procesando evento DB {event['id']}: {e}")
                 self._db.execute(
                     "UPDATE event_queue SET status = 'failed' WHERE id = ?",

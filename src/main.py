@@ -5,6 +5,7 @@ Inicia el servidor web Flask y todos los workers en segundo plano.
 import sys
 import threading
 import webbrowser
+from datetime import datetime
 
 from src.config import WEB_HOST, WEB_PORT, WEBHOOK_PORT
 from src.utils.logger import setup_logging
@@ -43,7 +44,7 @@ def start_workers():
         logger.info(f"{reprocessed} eventos pendientes reprocesados")
 
     # Emitir evento de inicio
-    eb.publish("system.started", {"timestamp": __import__("datetime").datetime.now().isoformat()})
+    eb.publish("system.started", {"timestamp": datetime.now().isoformat()})
 
     logger.info(f"Workers iniciados: {[w[0] for w in workers]}")
     return workers
@@ -58,6 +59,8 @@ def register_tools():
     from src.tools.notification.service import NotificationService
     from src.tools.autopilot.service import AutoPilotService
     from src.tools.logic_gate.service import LogicGateService
+    from src.tools.api_connector.service import APIConnectorService
+    from src.tools.data_keeper.service import DataKeeperService
 
     engine = WorkflowEngine()
 
@@ -68,6 +71,8 @@ def register_tools():
     engine.register_tool("notification", NotificationService())
     engine.register_tool("autopilot", AutoPilotService())
     engine.register_tool("logic_gate", LogicGateService())
+    engine.register_tool("api_connector", APIConnectorService())
+    engine.register_tool("data_keeper", DataKeeperService())
 
     logger.info(f"Herramientas registradas: {list(engine._tools.keys())}")
     return engine
@@ -103,7 +108,7 @@ def main():
     url = f"http://{WEB_HOST}:{WEB_PORT}"
     try:
         webbrowser.open(url)
-    except Exception:
+    except OSError:
         pass
 
     logger.info(f"Servidor iniciado en {url}")

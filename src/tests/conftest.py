@@ -31,6 +31,7 @@ def db_manager(db_path, monkeypatch):
     from src.data import database_manager
     from src.data.database_manager import DatabaseManager
     from src.events.bus import EventBus
+    from src.workflow.engine import WorkflowEngine
 
     # Also patch the imported DB_PATH in database_manager module
     # (it uses 'from src.config import DB_PATH' which creates a local binding)
@@ -39,11 +40,13 @@ def db_manager(db_path, monkeypatch):
     # Reset singletons para usar nueva DB
     EventBus._instance = None
     DatabaseManager._instance = None
+    WorkflowEngine._reset()
     dm = DatabaseManager()
     yield dm
     dm.close_all()
     DatabaseManager._instance = None
     EventBus._instance = None
+    WorkflowEngine._reset()
 
 
 @pytest.fixture

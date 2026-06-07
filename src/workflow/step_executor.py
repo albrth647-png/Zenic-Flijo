@@ -4,8 +4,6 @@ Ejecuta pasos individuales de un workflow, llamando a la herramienta correcta.
 """
 import threading
 import time
-from typing import Any
-
 from src.utils.helpers import resolve_variables, safe_get
 from src.utils.logger import setup_logging
 
@@ -39,9 +37,9 @@ class StepExecutor:
     """
 
     def __init__(self):
-        self._tools: dict[str, Any] = {}
+        self._tools: dict[str, object] = {}
 
-    def register_tool(self, tool_name: str, tool_instance: Any) -> None:
+    def register_tool(self, tool_name: str, tool_instance: object) -> None:
         """Registra una herramienta para que esté disponible en los steps."""
         self._tools[tool_name] = tool_instance
 
@@ -126,23 +124,40 @@ class StepExecutor:
             )
 
     def _resolve_params(self, params: dict, context: dict) -> dict:
-        """Resuelve variables en los parámetros del paso."""
+        """Resuelve variables en los parámetros del paso y convierte tipos."""
         resolved = {}
         for key, value in params.items():
             if isinstance(value, str):
-                resolved[key] = resolve_variables(value, context)
+                resolved_val = resolve_variables(value, context)
+                # Si el valor resuelto es string pero parece número, convertir
+                if isinstance(resolved_val, str):
+                    resolved[key] = self._coerce_numeric(resolved_val)
+                else:
+                    resolved[key] = resolved_val
             elif isinstance(value, dict):
                 resolved[key] = self._resolve_params(value, context)
             elif isinstance(value, list):
                 resolved[key] = [
                     self._resolve_params(item, context) if isinstance(item, dict)
-                    else resolve_variables(item, context) if isinstance(item, str)
+                    else self._coerce_numeric(resolve_variables(item, context)) if isinstance(item, str)
                     else item
                     for item in value
                 ]
             else:
                 resolved[key] = value
         return resolved
+
+    @staticmethod
+    def _coerce_numeric(value: str) -> str | int | float:
+        """Convierte strings que parecen números a int/float."""
+        if not isinstance(value, str):
+            return value
+        try:
+            if '.' in value:
+                return float(value)
+            return int(value)
+        except (ValueError, TypeError):
+            return value
 
     def _execute_system_action(self, action: str, params: dict) -> dict:
         """Ejecuta acciones del sistema (backup, etc.)."""

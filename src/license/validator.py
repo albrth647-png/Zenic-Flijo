@@ -82,19 +82,36 @@ class LicenseValidator:
         self._db.commit()
 
     def get_license_info(self) -> dict:
+        # Primero buscar licencia paga activa (tiene prioridad sobre trial)
+        paid = self._db.fetchone(
+            "SELECT * FROM license WHERE is_trial = 0 ORDER BY issued_at DESC LIMIT 1"
+        )
+        if paid:
+            # Verificar expiración
+            if paid["expires_at"]:
+                try:
+                    expiry = datetime.strptime(paid["expires_at"], "%Y-%m-%d")
+                    if expiry >= datetime.now():
+                        return {
+                            "type": paid["type"],
+                            "client_name": paid["client_name"],
+                            "expires_at": paid["expires_at"],
+                            "is_trial": False,
+                        }
+                except ValueError:
+                    pass
+            else:
+                # Sin expiración (licencia perpetua)
+                return {
+                    "type": paid["type"],
+                    "client_name": paid["client_name"],
+                    "expires_at": None,
+                    "is_trial": False,
+                }
+        # Si no hay paga activa, usar trial
         trial = self.get_trial_status()
         if trial["status"] == "active" and trial["is_trial"]:
             return {"type": "free", "is_trial": True, "days_left": trial["days_left"]}
-        key_row = self._db.fetchone(
-            "SELECT * FROM license WHERE is_trial = 0 ORDER BY issued_at DESC LIMIT 1"
-        )
-        if key_row:
-            return {
-                "type": key_row["type"],
-                "client_name": key_row["client_name"],
-                "expires_at": key_row["expires_at"],
-                "is_trial": False,
-            }
         return {"type": "free", "is_trial": True, "days_left": TRIAL_DAYS}
 
     def activate_key(self, key: str, license_type: str = "individual",

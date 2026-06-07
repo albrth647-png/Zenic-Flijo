@@ -14,6 +14,7 @@
             <div class="detail-actions">
                 <button id="btnToggle" class="btn" onclick="toggleWfStatus()">⏸ Pausar</button>
                 <a id="btnEdit" href="#" class="btn">✏️ Editar</a>
+                <button onclick="exportDetailWorkflow()" class="btn">📤 Exportar</button>
                 <button class="btn btn-danger" onclick="deleteWf()">🗑 Eliminar</button>
                 <a href="/workflows" class="btn">← Volver</a>
             </div>
@@ -35,6 +36,15 @@
         <div class="section">
             <h2>🔄 Pasos del Workflow</h2>
             <div id="wfSteps" class="steps-flow"></div>
+        </div>
+
+        <!-- Reports Section -->
+        <div class="section">
+            <h2>📋 Reportes</h2>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <a href="/api/reports/workflows/csv" class="btn btn-sm" download>📥 CSV (todos)</a>
+                <a href="/api/reports/workflows/pdf" class="btn btn-sm" download>📄 PDF (todos)</a>
+            </div>
         </div>
 
         <!-- History Section -->
@@ -251,6 +261,19 @@
 
         renderSteps(wf.steps);
         await renderHistory();
+    }
+
+    async function exportDetailWorkflow() {
+        const data = await api(`/api/workflows/${WF_ID}/export`);
+        if (!data) return;
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `workflow-${WF_ID}-${(data.name || 'export').replace(/[^a-zA-Z0-9]/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(`Workflow "${data.name}" exportado ✅`, 'success');
     }
 
     loadWorkflowDetail();

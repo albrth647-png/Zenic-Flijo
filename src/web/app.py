@@ -16,6 +16,7 @@ from src.config import (
     WEB_HOST, WEB_PORT, SESSION_SECRET, SESSION_EXPIRY_HOURS,
     LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MINUTES,
     FREE_TIER_MAX_WORKFLOWS, FREE_TIER_ALLOWED_TOOLS,
+    SESSION_COOKIE_SECURE,
 )
 from src.data.database_manager import DatabaseManager
 from src.utils.logger import setup_logging
@@ -114,8 +115,7 @@ def create_app() -> Flask:
         static_folder=str(Path(__file__).parent / "static"),
     )
     app.secret_key = SESSION_SECRET
-    # ⚠️ En producción con HTTPS, cambiar SESSION_COOKIE_SECURE a True
-    app.config["SESSION_COOKIE_SECURE"] = False  # False para localhost/dev
+    app.config["SESSION_COOKIE_SECURE"] = SESSION_COOKIE_SECURE
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["PERMANENT_SESSION_LIFETIME"] = SESSION_EXPIRY_HOURS * 3600
@@ -195,7 +195,7 @@ def create_app() -> Flask:
         if isinstance(stored_hash, str):
             try:
                 valid = bcrypt.checkpw(password.encode(), stored_hash.encode())
-            except Exception:
+            except (ValueError, TypeError):
                 valid = False
         else:
             valid = False
@@ -228,6 +228,45 @@ def create_app() -> Flask:
         trial = LicenseValidator().get_trial_status()
         return jsonify({"stats": stats, "trial": trial})
 
+    @app.route("/api/dashboard/timeline")
+    @login_required
+    def api_dashboard_timeline():
+        """Retorna ejecuciones agrupadas por día para gráficos."""
+        days = int(request.args.get("days", 14))
+        raw = db.fetchall(
+            """SELECT DATE(started_at) as day, status, COUNT(*) as count
+               FROM workflow_executions
+               WHERE started_at >= datetime('now', ? || ' days')
+               GROUP BY day, status
+               ORDER BY day ASC""",
+            (f"-{days}",),
+        )
+        # Tools más usadas
+        tools_raw = db.fetchall(
+            """SELECT tool, COUNT(*) as count
+               FROM workflow_step_logs
+               GROUP BY tool
+               ORDER BY count DESC LIMIT 10"""
+        )
+        # Tasa de éxito por día
+        daily: dict[str, dict] = {}
+        for r in raw:
+            day = r["day"]
+            if day not in daily:
+                daily[day] = {"day": day, "completed": 0, "failed": 0, "total": 0}
+            status = r["status"]
+            count = r["count"]
+            if status == "completed":
+                daily[day]["completed"] += count
+            elif status == "failed":
+                daily[day]["failed"] += count
+            daily[day]["total"] += count
+
+        return jsonify({
+            "daily": sorted(daily.values(), key=lambda x: x["day"]),
+            "tools": tools_raw,
+        })
+
     # ── API: Workflows ─────────────────────────────────────
 
     @app.route("/api/workflows", methods=["GET"])
@@ -252,12 +291,15 @@ def create_app() -> Flask:
             )
             created = repo.create(wf)
 
-            # Suscribir a eventos si es necesario
+            # Suscribir a eventos según trigger_type
             if created.trigger_type == "event":
                 event_config = created.trigger_config
                 event_type = event_config.get("event", "")
                 if event_type:
                     event_bus.subscribe(event_type, created.id)
+            elif created.trigger_type == "webhook":
+                # Los webhooks se suscriben automáticamente al evento webhook.received
+                event_bus.subscribe("webhook.received", created.id)
 
             return jsonify(created.to_dict()), 201
         except ValueError as e:
@@ -320,6 +362,24 @@ def create_app() -> Flask:
             return jsonify({"error": "Ejecución no encontrada"}), 404
         logs = repo.get_step_logs(exec_id)
         return jsonify({"execution": execution.to_dict(), "logs": logs})
+
+    @app.route("/api/workflows/<int:wf_id>/export", methods=["GET"])
+    @login_required
+    def api_export_workflow(wf_id):
+        exported = repo.export_workflow(wf_id)
+        if not exported:
+            return jsonify({"error": "Workflow no encontrado"}), 404
+        return jsonify(exported)
+
+    @app.route("/api/workflows/import", methods=["POST"])
+    @login_required
+    def api_import_workflow():
+        data = request.get_json() or {}
+        try:
+            imported = repo.import_workflow(data)
+            return jsonify(imported.to_dict()), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
 
     @app.route("/api/workflows/<int:wf_id>/retry", methods=["POST"])
     @login_required
@@ -497,7 +557,7 @@ def create_app() -> Flask:
                 try:
                     if not bcrypt.checkpw(current.encode(), stored_hash.encode()):
                         return jsonify({"error": "Contraseña actual incorrecta"}), 400
-                except Exception:
+                except (ValueError, TypeError):
                     return jsonify({"error": "Error verificando contraseña"}), 400
 
         if len(new_pass) < 6:
@@ -560,6 +620,113 @@ def create_app() -> Flask:
             (limit,),
         )
         return jsonify(logs)
+
+    # ── API: Reports ─────────────────────────────────────────
+
+    @app.route("/api/reports/workflows/<fmt>")
+    @login_required
+    def api_report_workflows(fmt):
+        from src.web.reports import ReportGenerator
+        gen = ReportGenerator()
+        if fmt == "csv":
+            content = gen.workflows_csv()
+            mimetype = "text/csv"
+        elif fmt == "pdf":
+            content = gen.workflows_pdf()
+            mimetype = "application/pdf"
+        else:
+            return jsonify({"error": "Formato no soportado. Usa csv o pdf."}), 400
+        response = app.response_class(response=content, mimetype=mimetype)
+        response.headers["Content-Disposition"] = f'attachment; filename="{gen.filename("workflows", fmt)}"'
+        return response
+
+    @app.route("/api/reports/crm/<fmt>")
+    @login_required
+    def api_report_crm(fmt):
+        from src.web.reports import ReportGenerator
+        gen = ReportGenerator()
+        if fmt == "csv":
+            content = gen.crm_leads_csv()
+            mimetype = "text/csv"
+        elif fmt == "pdf":
+            content = gen.crm_leads_pdf()
+            mimetype = "application/pdf"
+        else:
+            return jsonify({"error": "Formato no soportado. Usa csv o pdf."}), 400
+        response = app.response_class(response=content, mimetype=mimetype)
+        response.headers["Content-Disposition"] = f'attachment; filename="{gen.filename("crm_leads", fmt)}"'
+        return response
+
+    @app.route("/api/reports/inventory/<fmt>")
+    @login_required
+    def api_report_inventory(fmt):
+        from src.web.reports import ReportGenerator
+        gen = ReportGenerator()
+        if fmt == "csv":
+            content = gen.inventory_csv()
+            mimetype = "text/csv"
+        elif fmt == "pdf":
+            content = gen.inventory_pdf()
+            mimetype = "application/pdf"
+        else:
+            return jsonify({"error": "Formato no soportado. Usa csv o pdf."}), 400
+        response = app.response_class(response=content, mimetype=mimetype)
+        response.headers["Content-Disposition"] = f'attachment; filename="{gen.filename("inventory", fmt)}"'
+        return response
+
+    @app.route("/api/reports/invoices/<fmt>")
+    @login_required
+    def api_report_invoices(fmt):
+        from src.web.reports import ReportGenerator
+        gen = ReportGenerator()
+        if fmt == "csv":
+            content = gen.invoices_csv()
+            mimetype = "text/csv"
+        elif fmt == "pdf":
+            content = gen.invoices_pdf()
+            mimetype = "application/pdf"
+        else:
+            return jsonify({"error": "Formato no soportado. Usa csv o pdf."}), 400
+        response = app.response_class(response=content, mimetype=mimetype)
+        response.headers["Content-Disposition"] = f'attachment; filename="{gen.filename("invoices", fmt)}"'
+        return response
+
+    # ── API: WhatsApp Settings ───────────────────────────────
+
+    @app.route("/api/settings/whatsapp", methods=["GET"])
+    @login_required
+    def api_get_whatsapp():
+        from src.tools.notification.service import NotificationService
+        ns = NotificationService()
+        return jsonify(ns.get_whatsapp_status())
+
+    @app.route("/api/settings/whatsapp", methods=["PUT"])
+    @login_required
+    def api_update_whatsapp():
+        data = request.get_json() or {}
+        token = data.get("token", "")
+        phone_number_id = data.get("phone_number_id", "")
+        if not token or not phone_number_id:
+            return jsonify({"error": "token y phone_number_id son requeridos"}), 400
+        from src.tools.notification.service import NotificationService
+        ns = NotificationService()
+        ns.configure_whatsapp(token, phone_number_id)
+        return jsonify({"status": "saved"})
+
+    @app.route("/api/settings/whatsapp/test", methods=["POST"])
+    @login_required
+    def api_test_whatsapp():
+        data = request.get_json() or {}
+        test_number = data.get("test_number", "")
+        if not test_number:
+            return jsonify({"error": "Número de prueba requerido"}), 400
+        from src.tools.notification.service import NotificationService
+        ns = NotificationService()
+        result = ns.send_whatsapp(
+            to=test_number,
+            message="🧪 Conexión WhatsApp exitosa desde Workflow Determinista",
+        )
+        return jsonify(result)
 
     @app.route("/api/system/status")
     def api_system_status():

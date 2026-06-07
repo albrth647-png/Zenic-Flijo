@@ -118,6 +118,174 @@ function renderTrialProgress(daysLeft, totalDays = 30) {
 }
 
 // ============================================
+// Dashboard charts (Chart.js)
+// ============================================
+let chartInstances = {};
+
+function destroyCharts() {
+    Object.values(chartInstances).forEach(c => { try { c.destroy(); } catch {} });
+    chartInstances = {};
+}
+
+async function loadDashboardCharts() {
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js no disponible — recarga la página');
+        return;
+    }
+    destroyCharts();
+
+    const data = await api('/api/dashboard/timeline?days=14');
+    if (!data) return;
+
+    // ── Chart colors (dark theme) ───────────────────────────
+    const colors = {
+        success: '#22c55e',
+        failed: '#ef4444',
+        primary: '#6366f1',
+        warning: '#f59e0b',
+        grid: 'rgba(255,255,255,0.06)',
+        text: '#888',
+    };
+    const chartDefaults = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: { color: colors.text, font: { size: 11 } },
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: colors.text, font: { size: 10 } },
+                grid: { color: colors.grid },
+            },
+            y: {
+                beginAtZero: true,
+                ticks: { color: colors.text, font: { size: 10 } },
+                grid: { color: colors.grid },
+            }
+        }
+    };
+
+    // ── 1. Ejecuciones por día (bar chart) ──────────────────
+    const execCtx = document.getElementById('executionsChart');
+    if (execCtx && data.daily?.length) {
+        const days = data.daily.map(d => {
+            const parts = d.day.split('-');
+            return `${parts[2]}/${parts[1]}`;
+        });
+        chartInstances.executions = new Chart(execCtx, {
+            type: 'bar',
+            data: {
+                labels: days,
+                datasets: [
+                    {
+                        label: '✅ Completadas',
+                        data: data.daily.map(d => d.completed),
+                        backgroundColor: colors.success,
+                        borderRadius: 4,
+                    },
+                    {
+                        label: '❌ Fallidas',
+                        data: data.daily.map(d => d.failed),
+                        backgroundColor: colors.failed,
+                        borderRadius: 4,
+                    },
+                ]
+            },
+            options: {
+                ...chartDefaults,
+                plugins: {
+                    ...chartDefaults.plugins,
+                    legend: {
+                        ...chartDefaults.plugins.legend,
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    ...chartDefaults.scales,
+                    x: {
+                        ...chartDefaults.scales.x,
+                        stacked: true,
+                    },
+                    y: {
+                        ...chartDefaults.scales.y,
+                        stacked: true,
+                    }
+                }
+            }
+        });
+    }
+
+    // ── 2. Tasa de éxito (doughnut) ─────────────────────────
+    const successCtx = document.getElementById('successChart');
+    if (successCtx && data.daily?.length) {
+        const totalCompleted = data.daily.reduce((s, d) => s + d.completed, 0);
+        const totalFailed = data.daily.reduce((s, d) => s + d.failed, 0);
+        chartInstances.success = new Chart(successCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Completadas', 'Fallidas'],
+                datasets: [{
+                    data: [totalCompleted, totalFailed || 0],
+                    backgroundColor: [colors.success, colors.failed],
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: colors.text,
+                            font: { size: 11 },
+                            padding: 12,
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── 3. Tools más usadas (horizontal bar) ────────────────
+    const toolsCtx = document.getElementById('toolsChart');
+    if (toolsCtx && data.tools?.length) {
+        const toolLabels = {
+            crm: 'CRM', invoice: 'Facturas', inventory: 'Inventario',
+            notification: 'Notificaciones', system: 'Sistema',
+            api_connector: 'API Connector', data_keeper: 'Data Keeper',
+            autopilot: 'Autopilot', logic_gate: 'Logic Gate',
+        };
+        const labels = data.tools.map(t => toolLabels[t.tool] || t.tool);
+        const values = data.tools.map(t => t.count);
+        const barColors = ['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#a855f7','#ec4899'];
+        chartInstances.tools = new Chart(toolsCtx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Ejecuciones',
+                    data: values,
+                    backgroundColor: barColors.slice(0, labels.length),
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                ...chartDefaults,
+                indexAxis: 'y',
+                plugins: {
+                    ...chartDefaults.plugins,
+                    legend: { display: false },
+                }
+            }
+        });
+    }
+}
+
+// ============================================
 // Dashboard loader
 // ============================================
 async function loadDashboard() {

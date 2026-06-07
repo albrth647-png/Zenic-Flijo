@@ -24,6 +24,7 @@ SESSION_SECRET = os.environ.get(
     "cambiar_esto_en_produccion_generar_aleatorio_64chars"
 )
 SESSION_EXPIRY_HOURS = 24
+SESSION_COOKIE_SECURE = os.environ.get("WFD_SESSION_SECURE", "false").lower() == "true"
 
 # ── Rate Limiting ──────────────────────────────────────────
 LOGIN_MAX_ATTEMPTS = 10
@@ -35,7 +36,7 @@ API_WINDOW_MINUTES = 15
 SCHEDULE_INTERVAL_SECONDS = 60
 
 # ── Webhook ────────────────────────────────────────────────
-WEBHOOK_API_KEY_ENABLED = True  # Siempre True en producción
+WEBHOOK_API_KEY_ENABLED = os.environ.get("WFD_WEBHOOK_API_KEY_ENABLED", "true").lower() == "true"
 
 # ── Error Handler ──────────────────────────────────────────
 ERROR_MAX_RETRIES = 3

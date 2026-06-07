@@ -4,8 +4,6 @@ CRUD de definiciones y ejecuciones de workflows en SQLite.
 """
 import json
 from datetime import datetime
-from typing import Any
-
 from src.data.database_manager import DatabaseManager
 from src.utils.helpers import generate_id, now_iso
 from src.utils.logger import setup_logging
@@ -59,7 +57,7 @@ class WorkflowDefinition:
         )
 
     @staticmethod
-    def _safe_json_loads(value: Any) -> Any:
+    def _safe_json_loads(value: dict | list | str) -> dict | list | str:
         if isinstance(value, (dict, list)):
             return value
         if isinstance(value, str):
@@ -323,6 +321,78 @@ class WorkflowRepository:
             }
             for r in rows
         ]
+
+    # ── Export / Import ───────────────────────────────────────
+
+    def export_workflow(self, workflow_id: int) -> dict | None:
+        """Exporta un workflow completo como dict JSON-serializable.
+
+        Incluye definición, pasos, trigger config y ejecuciones.
+        Usar import_workflow() para restaurar.
+        """
+        wf = self.get(workflow_id)
+        if not wf:
+            return None
+
+        executions = self.list_executions(workflow_id, limit=100)
+        now_str = datetime.now().isoformat()
+
+        return {
+            "export_version": "1.0",
+            "exported_at": now_str,
+            "name": wf.name,
+            "description": wf.description,
+            "trigger_type": wf.trigger_type,
+            "trigger_config": wf.trigger_config,
+            "steps": wf.steps,
+            "status": wf.status,
+            "executions": [e.to_dict() for e in executions],
+        }
+
+    def import_workflow(self, data: dict) -> WorkflowDefinition:
+        """Importa un workflow desde un dict generado por export_workflow().
+
+        Valida campos requeridos, sanitiza IDs, y crea un nuevo workflow
+        con estado 'active'. Las ejecuciones NO se importan.
+        """
+        name = (data.get("name") or "").strip()
+        if not name:
+            name = "Workflow importado"
+
+        trigger_type = data.get("trigger_type", "manual")
+        trigger_config = data.get("trigger_config") or {}
+        steps = data.get("steps")
+
+        if steps is not None and not isinstance(steps, list):
+            raise ValueError("campo 'steps' debe ser una lista")
+
+        steps = steps or []
+        # Sanitizar: resetear IDs de pasos
+        for i, step in enumerate(steps):
+            if isinstance(step, dict):
+                step["id"] = i + 1
+
+        # Advertir sobre tools desconocidas (no bloqueante)
+        known_tools = {"crm", "invoice", "inventory", "notification",
+                       "system", "autopilot", "logic_gate",
+                       "api_connector", "data_keeper"}
+        for step in steps:
+            tool = step.get("tool", "")
+            if tool and tool not in known_tools:
+                logger.warning(
+                    f"Import: tool desconocida '{tool}' en paso {step.get('id')} - "
+                    "se importará igual, pero puede fallar en ejecución"
+                )
+
+        wf = self.create(WorkflowDefinition(
+            name=name,
+            description=data.get("description", ""),
+            trigger_type=trigger_type,
+            trigger_config=trigger_config,
+            steps=steps,
+        ))
+        logger.info(f"Workflow importado: {wf.name} (ID: {wf.id})")
+        return wf
 
     # ── Dashboard ────────────────────────────────────────────
 

@@ -5,7 +5,7 @@ Los eventos se guardan en SQLite por si el sistema se apaga.
 """
 import json
 import threading
-from typing import Any, Callable
+from typing import Callable
 
 from src.data.database_manager import DatabaseManager
 from src.utils.logger import setup_logging
@@ -23,22 +23,26 @@ class EventBus:
     """
 
     _instance: "EventBus | None" = None
-    _lock = threading.Lock()
+    _lock = threading.RLock()
 
     def __new__(cls) -> "EventBus":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
         if hasattr(self, "_initialized") and self._initialized:
             return
-        self._initialized = True
-        self._db = DatabaseManager()
-        self._handlers: dict[str, list[Callable]] = {}
-        self._local_events: list[dict] = []
+        with self._lock:
+            if hasattr(self, "_initialized") and self._initialized:
+                return
+            self._initialized = True
+            self._db = DatabaseManager()
+            self._handlers: dict[str, list[Callable]] = {}
+            self._local_events: list[dict] = []
 
     # ── Suscripciones ───────────────────────────────────────
 
@@ -106,7 +110,7 @@ class EventBus:
             for handler in self._handlers[event_type]:
                 try:
                     handler(data)
-                except Exception as e:
+                except (KeyError, ValueError, TypeError) as e:
                     logger.error(f"Error en handler para evento '{event_type}': {e}")
 
         # 3. Buscar workflows suscritos
@@ -139,11 +143,18 @@ class EventBus:
 
         return results
 
+    @staticmethod
+    def _json_default(obj: object) -> str:
+        """Manejador por defecto para json.dumps: serializa objetos no estándar."""
+        if hasattr(obj, "isoformat"):  # datetime, date, time
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
     def _save_to_queue(self, event_type: str, data: dict) -> int:
         """Guarda un evento en la cola persistente."""
         cursor = self._db.execute(
             "INSERT INTO event_queue (event_type, event_data, status) VALUES (?, ?, 'pending')",
-            (event_type, json.dumps(data)),
+            (event_type, json.dumps(data, default=self._json_default)),
         )
         self._db.commit()
         return cursor.lastrowid
@@ -217,7 +228,23 @@ class EventBus:
                 self._update_queue_status(event["id"], "processing")
                 self.publish(event["event_type"], event_data)
                 count += 1
-            except Exception as e:
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
                 logger.error(f"Error reprocesando evento {event['id']}: {e}")
                 self._update_queue_status(event["id"], "failed")
+        return count
+
+    def reprocess_failed(self) -> int:
+        """Reintenta procesar eventos fallidos. Retorna cantidad reprocesada."""
+        failed = self._db.fetchall(
+            "SELECT * FROM event_queue WHERE status = 'failed' ORDER BY created_at"
+        )
+        count = 0
+        for event in failed:
+            try:
+                event_data = json.loads(event["event_data"])
+                self._update_queue_status(event["id"], "processing")
+                self.publish(event["event_type"], event_data)
+                count += 1
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                logger.error(f"Error reprocesando evento fallido {event['id']}: {e}")
         return count
