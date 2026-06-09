@@ -61,6 +61,11 @@ def register_tools():
     from src.tools.logic_gate.service import LogicGateService
     from src.tools.api_connector.service import APIConnectorService
     from src.tools.data_keeper.service import DataKeeperService
+    from src.tools.code_runner.service import CodeRunnerTool
+    from src.tools.integrations.gmail_service import GmailService
+    from src.tools.integrations.sheets_service import SheetsService
+    from src.tools.integrations.telegram_service import TelegramService
+    from src.tools.integrations.slack_service import SlackService
 
     engine = WorkflowEngine()
 
@@ -73,6 +78,13 @@ def register_tools():
     engine.register_tool("logic_gate", LogicGateService())
     engine.register_tool("api_connector", APIConnectorService())
     engine.register_tool("data_keeper", DataKeeperService())
+    engine.register_tool("code_runner", CodeRunnerTool())
+
+    # Integraciones (se activan cuando el usuario configura credenciales)
+    engine.register_tool("gmail", GmailService())
+    engine.register_tool("sheets", SheetsService())
+    engine.register_tool("telegram", TelegramService())
+    engine.register_tool("slack", SlackService())
 
     logger.info(f"Herramientas registradas: {list(engine._tools.keys())}")
     return engine

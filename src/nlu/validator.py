@@ -15,6 +15,8 @@ KNOWN_TOOLS = {
     "crm", "invoice", "inventory", "notification",
     "system", "autopilot", "logic_gate",
     "api_connector", "data_keeper",
+    "code_runner",
+    "gmail", "sheets", "telegram", "slack",
 }
 
 VALID_TRIGGER_TYPES = {"event", "schedule", "webhook", "manual"}
@@ -29,6 +31,11 @@ VALID_ACTIONS_BY_TOOL: dict[str, set[str]] = {
     "logic_gate": {"evaluate", "compare"},
     "api_connector": {"get", "post", "put", "delete"},
     "data_keeper": {"save", "load", "delete"},
+    "code_runner": {"run_python", "validate"},
+    "gmail": {"send_email", "search_emails", "get_message", "list_labels"},
+    "sheets": {"read_sheet", "write_sheet", "append_row", "update_cell", "create_spreadsheet"},
+    "telegram": {"send_message", "send_photo", "get_updates", "get_chat"},
+    "slack": {"send_message", "list_channels", "upload_file", "get_user_info"},
 }
 
 

@@ -1,7 +1,7 @@
 """
-DDE v3 — Pipeline Orquestador (Etapas 1-12)
+DDE v3 — Pipeline Orquestador (Etapas 1-13)
 
-Orquesta las etapas del pipeline NLU determinista:
+Orquesta las etapas del pipeline NLU determinista + IA:
 1. Normalizer
 2. Tokenizer
 3. LanguageRouter
@@ -14,13 +14,16 @@ Orquesta las etapas del pipeline NLU determinista:
 10. Validator
 11. Explainer
 12. DryRunSimulator
+13. AI WorkflowGenerator (opcional)
 
-El pipeline ofrece tres modos:
+El pipeline ofrece cuatro modos:
 - process() → NLUResult (etapas 1-6: análisis)
 - compile() → CompileResult (etapas 7-11: compilación completa)
 - simulate() → DryRunResult (etapa 12: simulación sin ejecutar)
+- ai_generate() → AIGenerationResult (etapa 13: generación con IA)
 
 Determinista: misma entrada → misma salida.
+IA: complemento opcional que genera workflows desde texto libre.
 """
 from __future__ import annotations
 from src.nlu.entities.base import Token, Entity, IntentMatch, Slot, NLUResult, CompileResult
@@ -39,10 +42,11 @@ from src.nlu.compiler import WorkflowCompiler
 from src.nlu.validator import WorkflowValidator
 from src.nlu.explainer import Explainer
 from src.nlu.dry_run import DryRunSimulator
+from src.nlu.ai_generator import WorkflowAIGenerator, AIGenerationResult
 
 
 class Pipeline:
-    """Orquestador del pipeline NLU determinista (etapas 1-11)."""
+    """Orquestador del pipeline NLU determinista (etapas 1-12 + 13 IA)."""
 
     def __init__(self):
         # Etapas 1-5
@@ -61,6 +65,24 @@ class Pipeline:
         self._validator = WorkflowValidator()
         self._explainer = Explainer()
         self._dry_run = DryRunSimulator()
+
+        # Etapa 13: AI Generator (opcional)
+        self._ai_generator = WorkflowAIGenerator()
+
+    def ai_generate(self, text: str, lang: str = "es") -> AIGenerationResult:
+        """Genera un workflow usando IA (etapa 13).
+
+        La generación es complementaria al compilador determinista.
+        Si el compilador falla o el usuario pide IA explícitamente, usa LLM.
+
+        Args:
+            text: Texto libre del usuario describiendo el workflow
+            lang: Idioma para la explicación
+
+        Returns:
+            AIGenerationResult con el workflow y metadata
+        """
+        return self._ai_generator.generate(text, lang)
 
     def process(self, text: str, lang: str | None = None) -> NLUResult:
         """Ejecuta el pipeline NLU (etapas 1-6).
@@ -293,3 +315,17 @@ def simulate_workflow(text: str, context: dict | None = None):
         DryRunResult con el reporte de simulación
     """
     return Pipeline().simulate(text, context=context)
+
+
+def ai_generate_workflow(text: str, lang: str = "es") -> AIGenerationResult:
+    """Función rápida para generar un workflow con IA desde texto libre.
+
+    Args:
+        text: Descripción del workflow que el usuario quiere
+        lang: Idioma (es/en)
+
+    Returns:
+        AIGenerationResult con el workflow y metadata
+    """
+    return Pipeline().ai_generate(text, lang)
+

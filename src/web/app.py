@@ -539,6 +539,101 @@ def create_app() -> Flask:
             "message": f"Encontré {len(intents)} sugerencias para tu solicitud.",
         })
 
+    @app.route("/api/nlu/ai-generate", methods=["POST"])
+    @login_required
+    def api_nlu_ai_generate():
+        """Genera un workflow usando IA a partir de texto libre.
+
+        Modos:
+        - ai: Genera workflow con LLM (requiere proveedor configurado)
+        - hybrid: Intenta determinista primero, fallback a IA
+        - deterministic: Solo usa el compilador determinista (sin IA)
+        """
+        data = request.get_json() or {}
+        text = data.get("text", "")
+        mode = data.get("mode", "hybrid")  # 'ai' | 'hybrid' | 'deterministic'
+        lang = data.get("lang", "es")
+
+        if not text:
+            return jsonify({"error": "text es requerido"}), 400
+
+        from src.nlu.pipeline import Pipeline
+        from src.nlu.ai_config import get_ai_config
+
+        pipeline = Pipeline()
+        ai_config = get_ai_config()
+
+        # ── Modo deterministic: solo compilador NLU ────────
+        if mode == "deterministic":
+            result = pipeline.compile(text, lang)
+            return jsonify({
+                "status": result.status,
+                "source": "deterministic",
+                "explanation": result.explanation,
+                "workflow": result.workflow,
+                "missing_slots": list(result.missing_slots),
+                "ai_provider": "none",
+            })
+
+        # ── Modo ai: solo LLM (requiere proveedor) ───────
+        if mode == "ai":
+            if not ai_config.is_ai_available():
+                return jsonify({
+                    "error": "No hay proveedor de IA configurado. "
+                             "Activa Ollama, OpenAI o Anthropic en Configuración.",
+                    "status": "no_provider",
+                    "available_providers": ai_config.get_status(),
+                }), 400
+
+            ai_result = pipeline.ai_generate(text, lang)
+            return jsonify({
+                "status": "ready" if ai_result.validated else "validation_error",
+                "source": "ai",
+                "explanation": ai_result.explanation,
+                "workflow": ai_result.workflow,
+                "ai_provider": ai_result.provider,
+                "ai_model": ai_result.model,
+                "validated": ai_result.validated,
+                "validation_errors": ai_result.validation_errors,
+            })
+
+        # ── Modo hybrid: determinista primero, fallback IA ──
+        # Paso 1: Intentar compilador determinista
+        det_result = pipeline.compile(text, lang)
+        if det_result.status == "ready" and det_result.workflow:
+            return jsonify({
+                "status": det_result.status,
+                "source": "deterministic",
+                "explanation": det_result.explanation,
+                "workflow": det_result.workflow,
+                "missing_slots": list(det_result.missing_slots),
+                "ai_provider": "none",
+            })
+
+        # Paso 2: Si determinista falló e IA está disponible, intentar IA
+        if ai_config.is_ai_available():
+            ai_result = pipeline.ai_generate(text, lang)
+            if ai_result.validated and ai_result.workflow:
+                return jsonify({
+                    "status": "ready",
+                    "source": "ai_fallback",
+                    "explanation": ai_result.explanation,
+                    "workflow": ai_result.workflow,
+                    "ai_provider": ai_result.provider,
+                    "ai_model": ai_result.model,
+                    "validated": True,
+                })
+
+        # Paso 3: Ambos fallaron — retornar el resultado determinista con el error
+        return jsonify({
+            "status": det_result.status,
+            "source": "deterministic",
+            "explanation": det_result.explanation or "No pude generar un workflow para tu solicitud.",
+            "workflow": {},
+            "missing_slots": list(det_result.missing_slots),
+            "ai_provider": ai_config.active_provider.value if ai_config.is_ai_available() else "none",
+        })
+
     # ── API: Tools ──────────────────────────────────────────
 
     @app.route("/api/tools/crm/leads", methods=["GET"])
