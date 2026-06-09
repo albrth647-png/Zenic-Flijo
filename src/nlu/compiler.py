@@ -17,6 +17,8 @@ KNOWN_TOOLS = {
     "crm", "invoice", "inventory", "notification",
     "system", "autopilot", "logic_gate",
     "api_connector", "data_keeper",
+    "code_runner",
+    "gmail", "sheets", "telegram", "slack",
 }
 
 # Mapeo tipo trigger → trigger_type string
