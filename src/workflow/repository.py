@@ -1,6 +1,10 @@
 """
-Workflow Determinista — WorkflowRepository
+ORBITAL — WorkflowRepository (Fase 3: Integrado con ORBITAL)
+=============================================================
+
 CRUD de definiciones y ejecuciones de workflows en SQLite.
+Mantiene compatibilidad total con la DB existente.
+Agrega conversion automatica a definiciones orbitales via OrbitalRepository.
 """
 import json
 from datetime import datetime
@@ -466,4 +470,34 @@ class WorkflowRepository:
                 }
                 for r in recent
             ],
+            "orbital_mode": True,
         }
+
+    # ── Conversion Orbital ──────────────────────────────────
+
+    def to_orbital(self, workflow_id: int) -> dict | None:
+        """
+        Convierte una definicion de workflow lineal a orbital.
+
+        Usa OrbitalRepository para la conversion y guarda en tablas orbitales.
+        Retorna la definicion orbital o None si no se encuentra.
+        """
+        definition = self.get(workflow_id)
+        if not definition:
+            return None
+
+        from src.orbital.orbital_repository import OrbitalRepository
+        orbital_repo = OrbitalRepository()
+        orbital_def = orbital_repo.convert_linear_to_orbital(definition.to_dict())
+        orbital_repo.save_orbital_workflow(orbital_def)
+        orbital_repo.close()
+
+        return orbital_def.to_dict()
+
+    def get_orbital_stats(self) -> dict:
+        """Retorna estadisticas de las tablas orbitales."""
+        from src.orbital.db import OrbitalDB
+        orbital_db = OrbitalDB()
+        stats = orbital_db.get_stats()
+        orbital_db.close()
+        return stats

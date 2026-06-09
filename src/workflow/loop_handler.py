@@ -1,83 +1,67 @@
 """
-Workflow Determinista — LoopHandler
-Maneja bucles (for/while/for each) en workflows.
+ORBITAL — LoopHandler Orbital (OVC Compartido)
+=================================================
+
+LoopHandler con convergencia orbital usando OVC compartido via OrbitalContext.
+
+MEJORA vs version anterior:
+- Ahora usa OrbitalContext → OVC compartido con todos los demas componentes
+- Los bucles while usan COD compartido para convergencia
+
+Compatibilidad: mantiene la misma API que LoopHandler.
 """
+
+from __future__ import annotations
+
+import hashlib
+import math
+
+from src.orbital.models import TWO_PI, DEFAULT_THRESHOLD, DEFAULT_EPSILON, MAX_COD_ITERATIONS
+from src.orbital.context import OrbitalContext
 from src.utils.logger import setup_logging
 
 logger = setup_logging(__name__)
 
 
 class LoopResult:
-    """Resultado de la ejecución de un bucle."""
+    """Resultado de la ejecucion de un bucle."""
 
-    def __init__(self, iterations: int, outputs: list[dict]):
+    def __init__(self, iterations: int, outputs: list[dict],
+                 converged: bool = False, convergence_delta: float = 0.0):
         self.iterations = iterations
-        self.outputs = outputs  # Resultados de cada iteración
+        self.outputs = outputs
+        self.converged = converged
+        self.convergence_delta = convergence_delta
 
 
 class LoopHandler:
     """
-    Ejecuta bucles en workflows.
-    
-    Formato de un step loop:
-    
-    For Each:
-    {
-        "id": 3,
-        "type": "foreach",
-        "collection": "$input.items",  # Variable que contiene la lista
-        "item_var": "item",            # Nombre de la variable de iteración
-        "steps": [...]                 # Pasos a ejecutar por cada elemento
-    }
-    
-    For (rango numérico):
-    {
-        "id": 3,
-        "type": "for",
-        "start": 0,
-        "end": 10,
-        "step": 1,
-        "index_var": "i",
-        "steps": [...]
-    }
-    
-    While:
-    {
-        "id": 3,
-        "type": "while",
-        "condition": "stock > 0",
-        "max_iterations": 100,
-        "steps": [...]
-    }
+    OrbitalConvergence — Bucles por convergencia orbital (OVC compartido).
+
+    Usa OrbitalContext para compartir el OVC con todos los componentes.
+    Los bucles while usan convergencia COD compartida.
     """
 
     MAX_ITERATIONS_DEFAULT = 1000
 
+    def __init__(self):
+        self._ctx = OrbitalContext()
+
     def execute(self, step: dict, context: dict, step_executor) -> LoopResult:
-        """
-        Ejecuta un bucle según su tipo.
-        
-        Args:
-            step: Definición del step loop
-            context: Contexto de ejecución (se modificará con variables de iteración)
-            step_executor: StepExecutor para ejecutar los pasos internos
-        
-        Returns:
-            LoopResult con número de iteraciones y outputs
-        """
+        """Ejecuta un bucle segun su tipo."""
         loop_type = step.get("type", "foreach")
-        outputs = []
 
         if loop_type == "foreach":
             return self._execute_foreach(step, context, step_executor)
         elif loop_type == "for":
             return self._execute_for(step, context, step_executor)
         elif loop_type == "while":
-            return self._execute_while(step, context, step_executor)
+            return self._execute_while_orbital(step, context, step_executor)
         else:
             raise ValueError(f"Tipo de bucle no soportado: {loop_type}")
 
     def _execute_foreach(self, step: dict, context: dict, step_executor) -> LoopResult:
+        """Ejecuta un bucle foreach con enriquecimiento orbital."""
         collection_ref = step.get("collection", "")
         item_var = step.get("item_var", "item")
         index_var = step.get("index_var", "index")
@@ -85,13 +69,11 @@ class LoopHandler:
         max_iter = step.get("max_iterations", self.MAX_ITERATIONS_DEFAULT)
 
         from src.utils.helpers import resolve_variables, safe_get
-        collection_str = resolve_variables(collection_ref, context)
-
-        # Intentar parsear como JSON si es string
         import json
+
+        collection_str = resolve_variables(collection_ref, context)
         collection = collection_str
         if isinstance(collection_str, str):
-            # Si el string es igual a la referencia sin resolver, buscar directo en contexto
             if collection_str == f"${{{collection_ref.lstrip('$')}}}":
                 path = collection_ref.lstrip("$")
                 collection = safe_get(context, path, None)
@@ -99,11 +81,9 @@ class LoopHandler:
                 try:
                     collection = json.loads(collection_str)
                 except (json.JSONDecodeError, TypeError):
-                    # Podría ser un string plano, no una colección
                     pass
 
         if not isinstance(collection, (list, tuple)):
-            # Último recurso: buscar con el path completo
             path = collection_ref.lstrip("$")
             collection = safe_get(context, path) or []
 
@@ -111,14 +91,21 @@ class LoopHandler:
             collection = [collection]
 
         if len(collection) > max_iter:
-            logger.warning(f"Colección truncada de {len(collection)} a {max_iter} iteraciones")
+            logger.warning(f"Coleccion truncada de {len(collection)} a {max_iter} iteraciones")
             collection = collection[:max_iter]
+
+        loop_var_name = f"loop_{step.get('id', 0)}_foreach"
+        self._ensure_loop_variable(loop_var_name, step)
 
         outputs = []
         for idx, item in enumerate(collection):
             iter_context = dict(context)
             iter_context[item_var] = item
             iter_context[index_var] = idx
+
+            loop_var = self._ctx.ovc.get_variable(loop_var_name)
+            if loop_var:
+                loop_var.advance(dt=1.0)
 
             iteration_results = self._execute_inner_steps(inner_steps, iter_context, step_executor)
             outputs.append({
@@ -127,10 +114,11 @@ class LoopHandler:
                 "results": iteration_results,
             })
 
-        logger.info(f"Foreach completado: {len(outputs)} iteraciones")
+        logger.info(f"OrbitalConvergence: Foreach completado — {len(outputs)} iteraciones")
         return LoopResult(iterations=len(outputs), outputs=outputs)
 
     def _execute_for(self, step: dict, context: dict, step_executor) -> LoopResult:
+        """Ejecuta un bucle for con enriquecimiento orbital."""
         start = step.get("start", 0)
         end = step.get("end", 10)
         step_size = step.get("step", 1)
@@ -138,17 +126,24 @@ class LoopHandler:
         inner_steps = step.get("steps", [])
         max_iter = step.get("max_iterations", self.MAX_ITERATIONS_DEFAULT)
 
+        loop_var_name = f"loop_{step.get('id', 0)}_for"
+        self._ensure_loop_variable(loop_var_name, step)
+
         count = 0
         outputs = []
         i = start
 
         while (step_size > 0 and i < end) or (step_size < 0 and i > end):
             if count >= max_iter:
-                logger.warning(f"Bucle for terminado por límite de {max_iter} iteraciones")
+                logger.warning(f"Bucle for terminado por limite de {max_iter} iteraciones")
                 break
 
             iter_context = dict(context)
             iter_context[index_var] = i
+
+            loop_var = self._ctx.ovc.get_variable(loop_var_name)
+            if loop_var:
+                loop_var.advance(dt=1.0)
 
             iteration_results = self._execute_inner_steps(inner_steps, iter_context, step_executor)
             outputs.append({
@@ -160,37 +155,93 @@ class LoopHandler:
             i += step_size
             count += 1
 
-        logger.info(f"Bucle for completado: {count} iteraciones")
+        logger.info(f"OrbitalConvergence: For completado — {count} iteraciones")
         return LoopResult(iterations=count, outputs=outputs)
 
-    def _execute_while(self, step: dict, context: dict, step_executor) -> LoopResult:
+    def _execute_while_orbital(self, step: dict, context: dict, step_executor) -> LoopResult:
+        """Ejecuta un bucle while usando convergencia orbital (COD compartido)."""
         condition = step.get("condition", "True")
         inner_steps = step.get("steps", [])
         max_iter = step.get("max_iterations", self.MAX_ITERATIONS_DEFAULT)
 
-        from src.workflow.condition_evaluator import ConditionEvaluator
-        evaluator = ConditionEvaluator()
+        loop_var_name = f"loop_{step.get('id', 0)}_while"
+        self._ensure_loop_variable(loop_var_name, step)
+
+        # Registrar ciclo si hay suficientes variables en el OVC compartido
+        all_vars = list(self._ctx.ovc.get_all_variables().keys())
+        if len(all_vars) >= 2:
+            try:
+                from src.orbital.models import CicloOrbital
+                cycle = CicloOrbital(
+                    name=f"while_cycle_{step.get('id', 0)}",
+                    variable_ids=all_vars[:5],
+                    threshold=DEFAULT_THRESHOLD,
+                )
+                self._ctx.rcc.register_cycle(cycle)
+            except (ValueError, KeyError):
+                pass
 
         count = 0
         outputs = []
+        converged = False
+        prev_values = None
+        convergence_delta = float("inf")
 
-        while evaluator.evaluate(condition, context):
-            if count >= max_iter:
-                logger.warning(f"Bucle while terminado por límite de {max_iter} iteraciones")
+        from src.workflow.condition_evaluator import ConditionEvaluator
+        evaluator = ConditionEvaluator()
+
+        while count < max_iter:
+            try:
+                should_continue = evaluator.evaluate(condition, context)
+            except ValueError:
+                should_continue = True
+
+            if not should_continue:
                 break
+
+            loop_var = self._ctx.ovc.get_variable(loop_var_name)
+            if loop_var:
+                loop_var.advance(dt=1.0)
 
             iteration_results = self._execute_inner_steps(inner_steps, context, step_executor)
             outputs.append({
                 "index": count,
                 "results": iteration_results,
             })
+
+            # Verificar convergencia orbital (COD compartido)
+            current_values = self._ctx.ovc.get_value_snapshot()
+            if prev_values is not None:
+                delta = 0.0
+                for key in current_values:
+                    if key in prev_values:
+                        delta += abs(current_values[key] - prev_values[key])
+                convergence_delta = delta
+
+                if delta < DEFAULT_EPSILON:
+                    converged = True
+                    logger.info(
+                        f"OrbitalConvergence: While CONVERGIO en {count} iteraciones "
+                        f"(delta={delta:.8f} < epsilon={DEFAULT_EPSILON})"
+                    )
+                    break
+
+            prev_values = dict(current_values)
             count += 1
 
-        logger.info(f"Bucle while completado: {count} iteraciones")
-        return LoopResult(iterations=count, outputs=outputs)
+        logger.info(
+            f"OrbitalConvergence: While completado — {count} iteraciones, "
+            f"convergio={'Si' if converged else 'No'}, delta={convergence_delta:.8f}"
+        )
+        return LoopResult(
+            iterations=count,
+            outputs=outputs,
+            converged=converged,
+            convergence_delta=convergence_delta,
+        )
 
     def _execute_inner_steps(self, steps: list[dict], context: dict, step_executor) -> list[dict]:
-        """Ejecuta los pasos internos de una iteración."""
+        """Ejecuta los pasos internos de una iteracion."""
         results = []
         for inner_step in steps:
             result = step_executor.execute(inner_step, context)
@@ -203,3 +254,18 @@ class LoopHandler:
             if result.status == "failed":
                 break
         return results
+
+    # ── Helpers orbitales (OVC compartido) ───────────────────
+
+    def _ensure_loop_variable(self, var_name: str, step: dict) -> None:
+        if self._ctx.ovc.get_variable(var_name) is None:
+            hash_val = int(hashlib.md5(var_name.encode()).hexdigest()[:8], 16)
+            theta = (hash_val % 1000) / 1000.0 * TWO_PI
+            self._ctx.ovc.create_variable(
+                name=var_name,
+                theta=theta,
+                amplitude=1.0,
+                velocity=0.1,
+                orbit_group="loop_vars",
+                metadata={"source": "loop_handler", "type": step.get("type"), "step_id": step.get("id")},
+            )

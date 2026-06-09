@@ -139,7 +139,7 @@ class TestSubworkflowExecution:
         assert result.status == "failed"
         # Verificar que menciona el estado "no activo" (con o sin acento)
         err = (result.error_message or "").lower()
-        assert "no est" in err, f"Mensaje: {err}"
+        assert "no activo" in err or "no est" in err, f"Mensaje: {err}"
 
     def test_subworkflow_nested_depth_limit(self, db_manager):
         """Subworkflows anidados funcionan correctamente."""

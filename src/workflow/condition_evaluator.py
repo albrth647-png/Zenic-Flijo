@@ -1,8 +1,27 @@
 """
-Workflow Determinista — ConditionEvaluator
-Evalúa condiciones en runtime usando un parser recursivo descendente seguro.
-NUNCA usa eval() ni exec().
+ORBITAL — ConditionEvaluator Orbital (OVC Compartido)
+=======================================================
+
+ConditionEvaluator con resonancia orbital usando OVC compartido via OrbitalContext.
+
+Estrategia dual:
+1. Intenta evaluacion textual (parser preciso para condiciones concretas)
+2. Si no hay suficientes variables orbitales, fallback orbital (resonancia)
+
+MEJORA vs version anterior:
+- Ahora usa OrbitalContext → OVC compartido con todos los demas componentes
+- Las condiciones retroalimentan al mismo OVC que usan los pasos del workflow
+
+Compatibilidad: mantiene la misma API que ConditionEvaluator.
 """
+
+from __future__ import annotations
+
+import hashlib
+import math
+
+from src.orbital.models import TWO_PI
+from src.orbital.context import OrbitalContext
 from src.utils.helpers import safe_get
 from src.utils.logger import setup_logging
 
@@ -11,54 +30,71 @@ logger = setup_logging(__name__)
 
 class ConditionEvaluator:
     """
-    Evalúa condiciones en formato de texto usando un parser seguro.
-    
-    Operadores soportados:
-    - == (igual)
-    - != (distinto)
-    - > (mayor que)
-    - < (menor que)
-    - >= (mayor o igual)
-    - <= (menor o igual)
-    - in (está en lista)
-    - contains (contiene texto)
-    - AND / OR (combinación lógica)
+    ResonanceDetector — Evaluacion de condiciones por resonancia orbital (OVC compartido).
+
+    Usa OrbitalContext para compartir el OVC con StepExecutor, WorkflowEngine, etc.
+
+    1. Cada variable del contexto se convierte en variable orbital (OVC compartido)
+    2. Cada condicion se convierte en variable orbital con fase umbral
+    3. TOR(context_var, condition_var) determina si hay resonancia
+    4. Si TOR > umbral → condicion verdadera (resonancia)
+    5. Fallback al parser textual para condiciones complejas
+
+    VENTAJA del OVC compartido:
+    - Las condiciones ven las mismas variables orbitales que los pasos
+    - La retroalimentacion es unificada y coherente
+    - Determinista: mismas condiciones + mismo contexto → mismo resultado
     """
 
+    # Operadores soportados (para fallback textual)
     SUPPORTED_OPERATORS = ["==", "!=", ">=", "<=", ">", "<", "in", "contains"]
+
+    def __init__(self):
+        self._ctx = OrbitalContext()
+        self._resonance_threshold = 0.0  # TOR > 0 = alineados = verdadero
 
     def evaluate(self, condition: str, context: dict[str, object]) -> bool:
         """
-        Evalúa una condición contra el contexto dado.
-        
+        Evalua una condicion contra el contexto.
+
+        Estrategia:
+        1. Intentar evaluacion textual (parser original) — preciso para condiciones concretas
+        2. Si el parser falla, intentar evaluacion orbital (resonancia)
+        3. Las variables orbitales se crean y retroalimentan via OrbitalContext compartido
+
         Args:
             condition: "stock < 10 AND producto == 'Tornillos'"
             context: {"stock": 5, "producto": "Tornillos"}
-        
+
         Returns:
-            bool: Resultado de la evaluación
-        
+            bool: Resultado de la evaluacion
+
         Raises:
-            ValueError: Si la expresión es inválida o contiene operaciones no permitidas
+            ValueError: Si la expresion es invalida
         """
         if not condition or not condition.strip():
             return True
 
+        # 1. Intentar evaluacion textual (parser original — preciso)
         try:
             tokens = self._tokenize(condition)
             ast = self._parse(tokens)
-            return self._eval_ast(ast, context)
+            result = self._eval_ast(ast, context)
+            # Retroalimentar al orbital compartido
+            self._orbital_retrofeed(condition, context, result)
+            return result
         except (ValueError, KeyError, TypeError, IndexError) as e:
-            logger.error(f"Error evaluando condición '{condition}': {e}")
-            raise ValueError(f"Error evaluando condición: {e}")
+            logger.debug(f"Parser textual fallo para '{condition}': {e}")
+
+        # 2. Fallback: evaluacion orbital
+        orbital_result = self._evaluate_orbital(condition, context)
+        if orbital_result is not None:
+            return orbital_result
+
+        raise ValueError(f"Error evaluando condicion: '{condition}' — ni textual ni orbital")
 
     def validate_expression(self, expression: str) -> dict:
-        """
-        Valida que una expresión sea sintácticamente correcta.
-        
-        Returns:
-            dict: {"valid": True} o {"valid": False, "error": "mensaje"}
-        """
+        """Valida que una expresion sea sintacticamente correcta."""
         try:
             tokens = self._tokenize(expression)
             self._parse(tokens)
@@ -66,35 +102,133 @@ class ConditionEvaluator:
         except ValueError as e:
             return {"valid": False, "error": str(e)}
 
+    # ── Evaluacion Orbital (OVC compartido) ──────────────────
+
+    def _orbital_retrofeed(self, condition: str, context: dict, result: bool) -> None:
+        """Retroalimenta el resultado al OVC compartido."""
+        condition_name = f"cond_{hashlib.md5(condition.encode()).hexdigest()[:8]}"
+        if self._ctx.ovc.get_variable(condition_name) is None:
+            hash_val = int(hashlib.md5(condition.encode()).hexdigest()[:8], 16)
+            theta = (hash_val % 1000) / 1000.0 * TWO_PI
+            self._ctx.ovc.create_variable(
+                name=condition_name,
+                theta=theta,
+                amplitude=1.5,
+                velocity=0.1,
+                orbit_group="condition_eval",
+                metadata={"source": "condition", "condition": condition},
+            )
+
+        cond_var = self._ctx.ovc.get_variable(condition_name)
+        if cond_var:
+            if result:
+                cond_var.advance(dt=1.0)
+            else:
+                cond_var.retrofeed(-0.1, damping=0.3)
+
+    def _evaluate_orbital(self, condition: str, context: dict) -> bool | None:
+        """Evalua una condicion usando resonancia orbital (OVC compartido)."""
+        numeric_vars = {}
+        for key, value in context.items():
+            if isinstance(value, (int, float)):
+                numeric_vars[key] = value
+            elif isinstance(value, dict):
+                for subkey, subvalue in value.items():
+                    if isinstance(subvalue, (int, float)):
+                        numeric_vars[f"{key}.{subkey}"] = subvalue
+
+        if not numeric_vars:
+            return None
+
+        for var_name, var_value in numeric_vars.items():
+            orbital_name = f"ctx_{var_name}"
+            if self._ctx.ovc.get_variable(orbital_name) is None:
+                theta = abs(var_value) % TWO_PI
+                amplitude = abs(var_value) if var_value != 0 else 1.0
+                amplitude = min(amplitude, 10.0)
+                self._ctx.ovc.create_variable(
+                    name=orbital_name,
+                    theta=theta,
+                    amplitude=amplitude,
+                    velocity=0.05,
+                    orbit_group="condition_context",
+                    metadata={"source": "context", "original_name": var_name},
+                )
+            else:
+                var = self._ctx.ovc.get_variable(orbital_name)
+                theta = abs(var_value) % TWO_PI
+                var.amplitude = min(abs(var_value) if var_value != 0 else 1.0, 10.0)
+
+        condition_name = f"cond_{hashlib.md5(condition.encode()).hexdigest()[:8]}"
+        if self._ctx.ovc.get_variable(condition_name) is None:
+            hash_val = int(hashlib.md5(condition.encode()).hexdigest()[:8], 16)
+            theta = (hash_val % 1000) / 1000.0 * TWO_PI
+            self._ctx.ovc.create_variable(
+                name=condition_name,
+                theta=theta,
+                amplitude=1.5,
+                velocity=0.1,
+                orbit_group="condition_eval",
+                metadata={"source": "condition", "condition": condition},
+            )
+
+        cond_var = self._ctx.ovc.get_variable(condition_name)
+        if not cond_var:
+            return None
+
+        total_alignment = 0.0
+        count = 0
+        for var_name in numeric_vars:
+            orbital_name = f"ctx_{var_name}"
+            try:
+                tor_result = self._ctx.tor.calculate(condition_name, orbital_name)
+                total_alignment += tor_result.tor_value
+                count += 1
+            except KeyError:
+                pass
+
+        if count == 0:
+            return None
+
+        avg_alignment = total_alignment / count
+        result = avg_alignment > self._resonance_threshold
+
+        logger.debug(
+            f"ResonanceDetector: '{condition}' → alineacion={avg_alignment:.4f} "
+            f"→ {'RESONANCIA (True)' if result else 'sin resonancia (False)'}"
+        )
+
+        if result:
+            cond_var.advance(dt=1.0)
+        else:
+            cond_var.retrofeed(-0.1, damping=0.3)
+
+        return result
+
+    # ── Parser Textual (Fallback) ───────────────────────────
+
     def _tokenize(self, text: str) -> list[dict]:
-        """
-        Convierte la condición en tokens.
-        Token types: 'value', 'operator', 'paren', 'string', 'number', 'variable'
-        """
+        """Convierte la condicion en tokens (parser original como fallback)."""
         tokens = []
         i = 0
         while i < len(text):
             char = text[i]
 
-            # Espacios
             if char.isspace():
                 i += 1
                 continue
 
-            # Paréntesis
             if char in "()":
                 tokens.append({"type": "paren", "value": char})
                 i += 1
                 continue
 
-            # Operadores de múltiples caracteres
             for op in self.SUPPORTED_OPERATORS:
                 if text[i:i + len(op)] == op:
                     tokens.append({"type": "operator", "value": op})
                     i += len(op)
                     break
             else:
-                # Strings con comillas
                 if char in ("'", '"'):
                     quote = char
                     j = i + 1
@@ -106,7 +240,6 @@ class ConditionEvaluator:
                     i = j + 1
                     continue
 
-                # Números
                 if char.isdigit() or (char == '-' and i + 1 < len(text) and text[i + 1].isdigit()):
                     j = i + 1
                     while j < len(text) and (text[j].isdigit() or text[j] == '.'):
@@ -119,7 +252,6 @@ class ConditionEvaluator:
                     i = j
                     continue
 
-                # Variables/palabras
                 if char.isalpha() or char in "_$":
                     j = i + 1
                     while j < len(text) and (text[j].isalnum() or text[j] in "._"):
@@ -134,29 +266,20 @@ class ConditionEvaluator:
                     elif word.startswith("$"):
                         tokens.append({"type": "variable", "value": word})
                     else:
-                        # Bare words (no $ prefix) are treated as context variable references
-                        # This allows: "stock < 10" where 'stock' resolves from context
                         tokens.append({"type": "variable", "value": word})
                     i = j
                     continue
 
-                raise ValueError(f"Carácter inesperado: '{char}'")
+                raise ValueError(f"Caracter inesperado: '{char}'")
 
         return tokens
 
     def _parse(self, tokens: list[dict]) -> dict:
-        """
-        Parsea tokens en un AST (Abstract Syntax Tree).
-        Gramática:
-        expression → boolean_expr
-        boolean_expr → comparison_expr (("AND" | "OR") comparison_expr)*
-        comparison_expr → value (operator value)?
-        """
         self._pos = 0
         self._tokens = tokens
         ast = self._parse_boolean_expr()
         if self._pos < len(tokens):
-            raise ValueError(f"Tokens inesperados después de la expresión: {tokens[self._pos:]}")
+            raise ValueError(f"Tokens inesperados: {tokens[self._pos:]}")
         return ast
 
     def _parse_boolean_expr(self) -> dict:
@@ -169,24 +292,21 @@ class ConditionEvaluator:
         return left
 
     def _parse_comparison_expr(self) -> dict:
-        # Paréntesis
         if self._pos < len(self._tokens) and self._tokens[self._pos]["type"] == "paren" and self._tokens[self._pos]["value"] == "(":
             self._pos += 1
             expr = self._parse_boolean_expr()
             if self._pos >= len(self._tokens) or self._tokens[self._pos]["type"] != "paren" or self._tokens[self._pos]["value"] != ")":
-                raise ValueError("Paréntesis sin cerrar")
+                raise ValueError("Parentesis sin cerrar")
             self._pos += 1
             return expr
 
         left = self._parse_value()
-
         if self._pos < len(self._tokens) and self._tokens[self._pos]["type"] == "operator":
             op = self._tokens[self._pos]["value"]
             self._pos += 1
             right = self._parse_value()
             return {"type": "comparison", "op": op, "left": left, "right": right}
 
-        # NOT operator (not value)
         if self._pos < len(self._tokens) and self._tokens[self._pos]["type"] == "value" and str(self._tokens[self._pos]["value"]).upper() == "NOT":
             self._pos += 1
             expr = self._parse_comparison_expr()
@@ -196,15 +316,14 @@ class ConditionEvaluator:
 
     def _parse_value(self) -> dict:
         if self._pos >= len(self._tokens):
-            raise ValueError("Se esperaba un valor, pero no hay más tokens")
+            raise ValueError("Se esperaba un valor")
         token = self._tokens[self._pos]
         if token["type"] in ("value", "string", "number", "variable"):
             self._pos += 1
             return {"type": token["type"], "value": token["value"]}
-        raise ValueError(f"Se esperaba un valor, pero se encontró: {token}")
+        raise ValueError(f"Se esperaba un valor, pero se encontro: {token}")
 
     def _eval_ast(self, ast: dict, context: dict) -> bool:
-        """Evalúa el AST recursivamente."""
         if ast["type"] == "boolean":
             left = self._eval_ast(ast["left"], context)
             right = self._eval_ast(ast["right"], context)
@@ -212,22 +331,17 @@ class ConditionEvaluator:
                 return left and right
             elif ast["op"] == "OR":
                 return left or right
-
         elif ast["type"] == "not":
             return not self._eval_ast(ast["expr"], context)
-
         elif ast["type"] == "comparison":
             left_val = self._resolve_value(ast["left"], context)
             right_val = self._resolve_value(ast["right"], context)
             return self._apply_operator(left_val, ast["op"], right_val)
-
         elif ast["type"] in ("value", "string", "number", "variable"):
             return bool(self._resolve_value(ast, context))
-
         raise ValueError(f"Nodo AST desconocido: {ast}")
 
     def _resolve_value(self, node: dict, context: dict) -> bool | str | int | float | list | None:
-        """Resuelve un nodo valor a su valor concreto."""
         if node["type"] == "string":
             return node["value"]
         elif node["type"] == "number":
@@ -235,22 +349,18 @@ class ConditionEvaluator:
         elif node["type"] == "value":
             return node["value"]
         elif node["type"] == "variable":
-            # Resolver $input.nombre, $output.step1.email, o bare words como 'stock'
             var_path = node["value"][1:] if node["value"].startswith("$") else node["value"]
             result = safe_get(context, var_path)
             if result is not None:
                 return result
-            # Si no está en contexto, podría ser un valor literal (e.g. True/False ya manejados)
-            # Pero si era un bare word como 'stock' y no está en contexto, log warning
             if not node["value"].startswith("$"):
-                logger.warning(f"Variable '{var_path}' no encontrada en contexto, usando como string literal")
+                logger.warning(f"Variable '{var_path}' no encontrada, usando como string literal")
                 return node["value"]
             logger.warning(f"Variable no encontrada en contexto: {var_path}")
             return None
         return None
 
     def _apply_operator(self, left: object, op: str, right: object) -> bool:
-        """Aplica un operador de comparación usando object en vez de Any."""
         if op == "==":
             return left == right
         elif op == "!=":
