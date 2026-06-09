@@ -41,12 +41,15 @@ def db_manager(db_path, monkeypatch):
     EventBus._instance = None
     DatabaseManager._instance = None
     WorkflowEngine._reset()
+    from src.orbital.context import OrbitalContext
+    OrbitalContext._reset()
     dm = DatabaseManager()
     yield dm
     dm.close_all()
     DatabaseManager._instance = None
     EventBus._instance = None
     WorkflowEngine._reset()
+    OrbitalContext._reset()
 
 
 @pytest.fixture

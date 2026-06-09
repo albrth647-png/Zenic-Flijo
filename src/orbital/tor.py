@@ -1,0 +1,259 @@
+"""
+ORBITAL — Pilar 2: TOR (Tension Orbital Reciproca)
+====================================================
+
+Calcula la fuerza orbital reciproca entre todas las parejas de variables:
+
+    TOR(i, j) = Ai * Aj * cos(theta_i - theta_j)
+
+Propiedades de TOR:
+- Simetrica: TOR(i,j) = TOR(j,i)
+- Acotada: |TOR(i,j)| <= Ai * Aj
+- Determinista: mismos theta y A → mismo TOR siempre
+- Positiva cuando las fases estan alineadas (resonancia)
+- Negativa cuando las fases estan opuestas (anti-resonancia)
+
+TOR es la FUERZA que mantiene las variables en orbita mutua.
+Sin TOR, las variables serian independientes (lineal).
+Con TOR, las variables se influyen recíprocamente (circular).
+
+Ejemplo de uso:
+    >>> from src.orbital.ovc import OVC
+    >>> from src.orbital.tor import TOR
+    >>> ovc = OVC()
+    >>> ovc.create_variable("Demanda", theta=0.0, amplitude=10.0)
+    >>> ovc.create_variable("Precio", theta=0.3, amplitude=50.0)
+    >>> tor = TOR(ovc)
+    >>> result = tor.calculate("Demanda", "Precio")
+    >>> print(f"TOR = {result.tor_value:.4f}, Alineacion = {result.alignment:.4f}")
+"""
+
+from __future__ import annotations
+
+import math
+from itertools import combinations
+
+from src.orbital.models import VariableOrbital, TORResult
+from src.utils.logger import setup_logging
+
+logger = setup_logging(__name__)
+
+
+class TOR:
+    """
+    Tension Orbital Reciproca — Calculador de fuerzas orbitales.
+
+    Calcula la tension orbital entre parejas de variables, generando
+    una matriz de tensiones que describe el estado de las interacciones
+    reciprocas en el sistema orbital.
+
+    La tension orbital es la base para:
+    - RCC: resonancia cuando TOR > umbral
+    - COD: colapso basado en tensiones acumuladas
+    - Espectro: modos deterministas derivados de las tensiones
+    """
+
+    def __init__(self, ovc):
+        """
+        Inicializa el calculador TOR.
+
+        Args:
+            ovc: Instancia de OVC que contiene las variables orbitales
+        """
+        self._ovc = ovc
+
+    # ── Calculo individual ─────────────────────────────────
+
+    def calculate(self, name_i: str, name_j: str, threshold: float = 0.0) -> TORResult:
+        """
+        Calcula la tension orbital reciproca entre dos variables.
+
+        TOR(i,j) = Ai * Aj * cos(theta_i - theta_j)
+
+        Args:
+            name_i: Nombre de la primera variable
+            name_j: Nombre de la segunda variable
+            threshold: Umbral para considerar resonancia (0 = sin filtro)
+
+        Returns:
+            TORResult con el valor de tension y metadatos
+
+        Raises:
+            KeyError: Si alguna variable no existe
+        """
+        var_i = self._ovc.get_variable(name_i)
+        var_j = self._ovc.get_variable(name_j)
+
+        if var_i is None:
+            raise KeyError(f"Variable no encontrada: {name_i}")
+        if var_j is None:
+            raise KeyError(f"Variable no encontrada: {name_j}")
+
+        return self._compute_tor(var_i, var_j, threshold)
+
+    def _compute_tor(self, var_i: VariableOrbital, var_j: VariableOrbital,
+                     threshold: float = 0.0) -> TORResult:
+        """
+        Calculo interno de TOR entre dos VariableOrbital.
+
+        Formula: TOR = Ai * Aj * cos(theta_i - theta_j)
+        """
+        # Diferencia de fase
+        phase_diff = var_i.theta - var_j.theta
+
+        # Alineacion: cos(theta_i - theta_j) ∈ [-1, 1]
+        alignment = math.cos(phase_diff)
+
+        # TOR: producto de amplitudes por alineacion
+        tor_value = var_i.amplitude * var_j.amplitude * alignment
+
+        # Es resonante si supera el umbral
+        is_resonant = abs(tor_value) > threshold if threshold > 0 else False
+
+        result = TORResult(
+            variable_i=var_i.name,
+            variable_j=var_j.name,
+            tor_value=tor_value,
+            phase_diff=phase_diff,
+            alignment=alignment,
+            is_resonant=is_resonant,
+        )
+
+        logger.debug(
+            f"TOR({var_i.name}, {var_j.name}) = {tor_value:.4f} "
+            f"(alineacion={alignment:.4f}, resonante={is_resonant})"
+        )
+
+        return result
+
+    # ── Calculo de matriz completa ──────────────────────────
+
+    def calculate_matrix(self, threshold: float = 0.0) -> list[TORResult]:
+        """
+        Calcula TOR para TODAS las parejas de variables.
+
+        Genera la matriz completa de tensiones orbitales reciprocas.
+        Para N variables, produce N*(N-1)/2 resultados.
+
+        Args:
+            threshold: Umbral de resonancia
+
+        Returns:
+            Lista de TORResult, uno por cada pareja
+        """
+        variables = list(self._ovc.get_all_variables().values())
+        results = []
+
+        for var_i, var_j in combinations(variables, 2):
+            result = self._compute_tor(var_i, var_j, threshold)
+            results.append(result)
+
+        logger.info(f"TOR: Matriz calculada — {len(results)} parejas de {len(variables)} variables")
+        return results
+
+    def calculate_for_cycle(self, variable_names: list[str],
+                            threshold: float = 0.0) -> list[TORResult]:
+        """
+        Calcula TOR solo para las variables de un ciclo especifico.
+
+        Args:
+            variable_names: Nombres de las variables del ciclo
+            threshold: Umbral de resonancia
+
+        Returns:
+            Lista de TORResult para las parejas del ciclo
+        """
+        results = []
+        for i in range(len(variable_names)):
+            for j in range(i + 1, len(variable_names)):
+                name_i = variable_names[i]
+                name_j = variable_names[j]
+                var_i = self._ovc.get_variable(name_i)
+                var_j = self._ovc.get_variable(name_j)
+                if var_i and var_j:
+                    result = self._compute_tor(var_i, var_j, threshold)
+                    results.append(result)
+        return results
+
+    # ── Consultas derivadas ────────────────────────────────
+
+    def get_total_tension(self, threshold: float = 0.0) -> float:
+        """
+        Suma total de todas las tensiones orbitales.
+
+        Representa la "energia" total del sistema orbital.
+        Sistema en resonancia: tension total alta.
+        Sistema caotico: tension total baja (se cancelan).
+        """
+        results = self.calculate_matrix(threshold)
+        return sum(r.tor_value for r in results)
+
+    def get_average_tension(self, threshold: float = 0.0) -> float:
+        """Tension orbital promedio del sistema."""
+        results = self.calculate_matrix(threshold)
+        if not results:
+            return 0.0
+        return sum(r.tor_value for r in results) / len(results)
+
+    def get_strongest_pair(self, threshold: float = 0.0) -> TORResult | None:
+        """Retorna la pareja con mayor tension orbital absoluta."""
+        results = self.calculate_matrix(threshold)
+        if not results:
+            return None
+        return max(results, key=lambda r: abs(r.tor_value))
+
+    def get_resonant_pairs(self, threshold: float) -> list[TORResult]:
+        """Retorna solo las parejas en resonancia (|TOR| > threshold)."""
+        results = self.calculate_matrix(threshold)
+        return [r for r in results if r.is_resonant]
+
+    # ── Aplicacion de tensiones ────────────────────────────
+
+    def apply_tensions_to_ovc(self, tor_results: list[TORResult],
+                               dt: float = 1.0, scale: float = 0.01) -> None:
+        """
+        Aplica los resultados TOR como tensiones moduladoras al OVC.
+
+        Cada variable recibe la suma de tensiones de todas sus parejas,
+        escalada por el factor `scale` para mantener estabilidad.
+
+        Esto crea el efecto ORBITAL: las variables se influyen mutuamente
+        a traves de sus tensiones reciprocas, cerrando el ciclo.
+
+        Args:
+            tor_results: Resultados TOR a aplicar
+            dt: Paso temporal
+            scale: Factor de escala para las tensiones (evitar divergencia)
+        """
+        # Acumular tensiones por variable
+        tension_accum: dict[str, float] = {}
+        for result in tor_results:
+            tension_accum[result.variable_i] = tension_accum.get(result.variable_i, 0.0) + result.tor_value
+            tension_accum[result.variable_j] = tension_accum.get(result.variable_j, 0.0) + result.tor_value
+
+        # Aplicar tensiones escaladas
+        scaled_tensions = {name: t * scale for name, t in tension_accum.items()}
+        self._ovc.apply_tensions(scaled_tensions, dt)
+
+        logger.debug(f"TOR: Tensiones aplicadas a {len(scaled_tensions)} variables (scale={scale})")
+
+    # ── Representacion ─────────────────────────────────────
+
+    def __repr__(self) -> str:
+        return f"TOR(ovc={self._ovc})"
+
+    def matrix_summary(self, threshold: float = 0.0) -> str:
+        """Retorna un resumen legible de la matriz de tensiones."""
+        results = self.calculate_matrix(threshold)
+        lines = ["TOR — Matriz de Tensiones Orbitales Reciprocas"]
+        lines.append(f"  Parejas: {len(results)}")
+        if results:
+            total = sum(r.tor_value for r in results)
+            avg = total / len(results)
+            max_r = max(results, key=lambda r: abs(r.tor_value))
+            lines.append(f"  Total: {total:.4f} | Promedio: {avg:.4f}")
+            lines.append(f"  Max: TOR({max_r.variable_i}, {max_r.variable_j}) = {max_r.tor_value:.4f}")
+            for r in sorted(results, key=lambda x: abs(x.tor_value), reverse=True):
+                resonant = " ★" if r.is_resonant else ""
+                lines.append(f"    TOR({r.variable_i}, {r.variable_j}) = {r.tor_value:8.4f} alineacion={r.alignment:+.4f}{resonant}")
+        return "\n".join(lines)
