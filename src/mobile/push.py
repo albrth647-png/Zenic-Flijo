@@ -251,7 +251,7 @@ class PushNotificationService:
         """Send an agent decision notification requiring human input."""
         return self.send(
             device_id=device_id,
-            title=f"Agente: Decisión Requerida",
+            title="Agente: Decisión Requerida",
             body=f"{agent_name}: {decision_summary[:100]}",
             category=NotificationCategory.AGENT,
             priority=NotificationPriority.HIGH,

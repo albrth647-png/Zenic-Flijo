@@ -473,13 +473,17 @@ class DatabaseManager:
     def create_user(
         self, username: str, password: str, role: str = "admin", display_name: str = "", email: str = ""
     ) -> dict:
-        """Crea un nuevo usuario con contraseña hasheada."""
-        import bcrypt
+        """Crea un nuevo usuario con contraseña hasheada (pbkdf2)."""
+        import hashlib
+        import secrets
 
-        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
+        salt = secrets.token_hex(16)
+        iterations = 600000
+        hashed = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations).hex()
+        stored_hash = f"pbkdf2:sha256:{iterations}:{salt}:{hashed}"
         cursor = self.execute(
             "INSERT INTO users (username, password_hash, role, display_name, email) VALUES (?, ?, ?, ?, ?)",
-            (username, hashed, role, display_name, email),
+            (username, stored_hash, role, display_name, email),
         )
         self.commit()
         return self.get_user(cursor.lastrowid)

@@ -14,7 +14,7 @@ import os
 import re
 import subprocess
 import zipfile
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ from src.utils.logger import setup_logging
 logger = setup_logging(__name__)
 
 
-class CertificationStatus(str, Enum):
+class CertificationStatus(StrEnum):
     """Estados posibles de la certificacion de un conector."""
 
     PENDING = "pending"
@@ -42,31 +42,44 @@ class CertificationEngine:
     """
 
     # Patrones de seguridad a detectar
-    SECRET_PATTERNS: list[str] = [
-        r'(?i)(api_key|apikey|api_secret|apisecret)\s*=\s*["\'][^"\']{8,}["\']',
-        r'(?i)(password|passwd|pwd)\s*=\s*["\'][^"\']{4,}["\']',
-        r'(?i)(secret|token)\s*=\s*["\'][^"\']{8,}["\']',
-        r'(?i)aws_(access_key_id|secret_access_key)\s*=\s*["\'][^"\']+["\']',
-        r"(?i)-----BEGIN (RSA |EC )?PRIVATE KEY-----",
-        r"(?i)ghp_[0-9a-zA-Z]{36}",
-        r"(?i)sk-[0-9a-zA-Z]{32,}",
-    ]
+    SECRET_PATTERNS: list[str] | None = None
+    SQL_INJECTION_PATTERNS: list[str] | None = None
+    UNSAFE_EVAL_PATTERNS: list[str] | None = None
 
-    SQL_INJECTION_PATTERNS: list[str] = [
-        r'execute\s*\(\s*f["\']',
-        r'execute\s*\(\s*["\'].*%s.*["\']\s*%',
-        r"raw\s*\(\s*f[\"']",
-        r"\.format\s*\(.*sql",
-    ]
+    def _get_secret_patterns(self) -> list[str]:
+        if self.SECRET_PATTERNS is None:
+            self.SECRET_PATTERNS = [
+                r"(?i)(api_key|apikey|api_secret|apisecret)\s*=\s*[\"\'][^\"\']{8,}[\"\']",
+                r"(?i)(password|passwd|pwd)\s*=\s*[\"\'][^\"\']{4,}[\"\']",
+                r"(?i)(secret|token)\s*=\s*[\"\'][^\"\']{8,}[\"\']",
+                r"(?i)aws_(access_key_id|secret_access_key)\s*=\s*[\"\'][^\"\']+[\"\']",
+                r"(?i)-----BEGIN (RSA |EC )?PRIVATE KEY-----",
+                r"(?i)ghp_[0-9a-zA-Z]{36}",
+                r"(?i)sk-[0-9a-zA-Z]{32,}",
+            ]
+        return self.SECRET_PATTERNS
 
-    UNSAFE_EVAL_PATTERNS: list[str] = [
-        r"\beval\s*\(",
-        r"\bexec\s*\(",
-        r"__import__\s*\(",
-        r"subprocess\.call\s*\([^)]*shell\s*=\s*True",
-        r"subprocess\.Popen\s*\([^)]*shell\s*=\s*True",
-        r"os\.system\s*\(",
-    ]
+    def _get_sql_injection_patterns(self) -> list[str]:
+        if self.SQL_INJECTION_PATTERNS is None:
+            self.SQL_INJECTION_PATTERNS = [
+                r"execute\s*\(\s*f[\"\']",
+                r"execute\s*\(\s*[\"\'].*%s.*[\"\']\s*%",
+                r"raw\s*\(\s*f[\"\']",
+                r"\.format\s*\(.*sql",
+            ]
+        return self.SQL_INJECTION_PATTERNS
+
+    def _get_unsafe_eval_patterns(self) -> list[str]:
+        if self.UNSAFE_EVAL_PATTERNS is None:
+            self.UNSAFE_EVAL_PATTERNS = [
+                r"\beval\s*\(",
+                r"\bexec\s*\(",
+                r"__import__\s*\(",
+                r"subprocess\.call\s*\([^)]*shell\s*=\s*True",
+                r"subprocess\.Popen\s*\([^)]*shell\s*=\s*True",
+                r"os\.system\s*\(",
+            ]
+        return self.UNSAFE_EVAL_PATTERNS
 
     def auto_review(self, connector_path: str) -> dict[str, Any]:
         """
@@ -276,19 +289,19 @@ class CertificationEngine:
 
                 for line_num, line in enumerate(lines, 1):
                     # Buscar secrets codificados
-                    for pattern in self.SECRET_PATTERNS:
+                    for pattern in self._get_secret_patterns():
                         if re.search(pattern, line):
                             findings.append(f"{py_file.name}:{line_num} - Posible secret codificado")
                             break
 
                     # Buscar patrones de inyeccion SQL
-                    for pattern in self.SQL_INJECTION_PATTERNS:
+                    for pattern in self._get_sql_injection_patterns():
                         if re.search(pattern, line):
                             findings.append(f"{py_file.name}:{line_num} - Posible inyeccion SQL")
                             break
 
                     # Buscar uso inseguro de eval/exec
-                    for pattern in self.UNSAFE_EVAL_PATTERNS:
+                    for pattern in self._get_unsafe_eval_patterns():
                         if re.search(pattern, line):
                             findings.append(f"{py_file.name}:{line_num} - Uso inseguro de eval/exec")
                             break
@@ -417,7 +430,7 @@ class CertificationEngine:
                     "warnings": 0,
                 }
             else:
-                failed_lines = [l for l in result.stdout.split("\n") if "FAILED" in l or "ERROR" in l]
+                failed_lines = [line for line in result.stdout.split("\n") if "FAILED" in line or "ERROR" in line]
                 return {
                     "name": "Test Execution",
                     "status": "failed",

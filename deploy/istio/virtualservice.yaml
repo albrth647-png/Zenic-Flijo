@@ -1,0 +1,41 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: zenic-flujo
+  namespace: zenic-flujo
+spec:
+  hosts:
+    - app.zenic-flujo.io
+  gateways:
+    - zenic-flujo-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /api
+      timeout: 60s
+      retries:
+        attempts: 3
+        perTryTimeout: 20s
+        retryOn: connect-failure,refused-stream,unavailable,5xx
+      route:
+        - destination:
+            host: zenic-flujo
+            port:
+              number: 8080
+          weight: 100
+    - match:
+        - uri:
+            prefix: /ws
+      timeout: 300s
+      route:
+        - destination:
+            host: zenic-flujo
+            port:
+              number: 8080
+          weight: 100
+    - route:
+        - destination:
+            host: zenic-flujo
+            port:
+              number: 8080
+          weight: 100

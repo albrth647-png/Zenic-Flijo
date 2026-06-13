@@ -252,9 +252,15 @@ class OpenaiV2Connector(BaseConnector):
             url = f"{self._base_url}/audio/transcriptions"
 
             # Handle file: could be a path or base64-encoded data
+            form_data = {"model": model}
+            if "language" in params:
+                form_data["language"] = params["language"]
+
             files_payload = None
             if os.path.isfile(file_path):
-                files_payload = {"file": (os.path.basename(file_path), open(file_path, "rb"))}
+                with open(file_path, "rb") as f:
+                    audio_bytes = f.read()
+                files_payload = {"file": (os.path.basename(file_path), audio_bytes)}
             else:
                 # Assume base64-encoded audio
                 try:
@@ -262,10 +268,6 @@ class OpenaiV2Connector(BaseConnector):
                     files_payload = {"file": ("audio.wav", audio_bytes)}
                 except Exception:
                     return {"success": False, "error": "El parametro 'file' debe ser una ruta de archivo valida o base64"}
-
-            form_data = {"model": model}
-            if "language" in params:
-                form_data["language"] = params["language"]
 
             resp = req_lib.post(
                 url,

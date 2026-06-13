@@ -6,10 +6,12 @@ La EJECUCIÓN sigue siendo 100% determinista — la IA solo genera el JSON.
 
 Flujo:
 1. Usuario escribe texto libre
-2. LLM genera JSON de workflow
-3. WorkflowValidator valida el JSON generado
-4. Si es válido → retorna workflow listo
-5. Si es inválido → fallback al compilador determinista
+2. Guardrails: ContentGuardrails verifica el prompt
+3. LLM genera JSON de workflow
+4. WorkflowValidator valida el JSON generado
+5. Guardrails: ExecutionGuardrails + PIIGuardrails verifican el workflow
+6. Si es válido → retorna workflow listo
+7. Si es inválido → fallback al compilador determinista
 
 Soporta: Ollama (local), OpenAI, Anthropic.
 """
@@ -20,6 +22,13 @@ import json
 from dataclasses import dataclass
 
 from src.nlu.ai_config import AIProvider, ProviderConfig, get_ai_config
+from src.nlu.guardrails import (
+    ContentGuardrails,
+    ExecutionGuardrails,
+    GuardrailAction,
+    GuardrailResult,
+    PIIGuardrails,
+)
 from src.utils.logger import setup_logging
 
 logger = setup_logging(__name__)
@@ -35,9 +44,14 @@ KNOWN_TOOLS = {
     "logic_gate",
     "api_connector",
     "data_keeper",
+    "code_runner",
+    "gmail",
+    "sheets",
+    "telegram",
+    "slack",
 }
 
-# Prompt template para generar workflows
+# Prompt template para generar workflows con guardrails integrados
 SYSTEM_PROMPT = """Eres un generador de workflows de automatización de negocios.
 
 Dado un texto del usuario, genera UN workflow en formato JSON.
@@ -50,8 +64,20 @@ HERRAMIENTAS DISPONIBLES:
 - api_connector: request (GET/POST/PUT/DELETE)
 - data_keeper: save, load, delete
 - system: backup_database, get_setting
+- code_runner: run_python, validate
+- gmail: send_email, search_emails, get_message, list_labels
+- sheets: read_sheet, write_sheet, append_row
+- slack: send_message, list_channels, get_user_info
+- telegram: send_message, send_photo
 
-REGLAS:
+REGLAS DE SEGURIDAD:
+1. NUNCA generes workflows que ejecuten comandos inseguros (rm -rf, drop table, etc.)
+2. NUNCA generes workflows que soliciten contraseñas, API keys o datos sensibles como parámetros
+3. NUNCA generes bucles infinitos (while true, loop forever)
+4. Máximo 50 pasos por workflow
+5. No generes más de 10 ramas fork paralelas
+
+FORMATO DEL WORKFLOW:
 1. Cada paso debe tener: id (int), tool (string), action (string), params (dict)
 2. El trigger_type debe ser: "manual", "schedule", "event", o "webhook"
 3. Si el usuario menciona un tiempo/cron, usa trigger_type "schedule"
@@ -86,6 +112,7 @@ class AIGenerationResult:
     validation_errors: list[str]
     fallback_used: bool
     raw_response: str = ""
+    guardrails_result: GuardrailResult | None = None  # Fase 3
 
 
 class WorkflowAIGenerator:
@@ -100,18 +127,46 @@ class WorkflowAIGenerator:
 
     def __init__(self):
         self._config = get_ai_config()
+        # ── Fase 3: Guardrails ───────────────────────────
+        self._content_guardrails = ContentGuardrails()
+        self._execution_guardrails = ExecutionGuardrails()
+        self._pii_guardrails = PIIGuardrails()
 
-    def generate(self, text: str, lang: str = "es") -> AIGenerationResult:
+    def generate(
+        self,
+        text: str,
+        lang: str = "es",
+        enable_guardrails: bool = True,
+    ) -> AIGenerationResult:
         """
         Genera un workflow desde texto libre usando el proveedor IA activo.
+
+        Fase 3: Integra guardrails de contenido antes del LLM
+        y guardrails de ejecución/PII después de generar.
 
         Args:
             text: Texto libre del usuario
             lang: Idioma para la explicación
+            enable_guardrails: Si aplicar guardrails
 
         Returns:
             AIGenerationResult con el workflow y metadata
         """
+        # ── 0. ContentGuardrails sobre el prompt ──────────
+        if enable_guardrails:
+            content_check = self._content_guardrails.check_prompt(text)
+            if content_check.action == GuardrailAction.BLOCK:
+                return AIGenerationResult(
+                    workflow={},
+                    provider="guardrails",
+                    model="",
+                    explanation=content_check.message,
+                    validated=False,
+                    validation_errors=[f"Content blocked: {content_check.message}"],
+                    fallback_used=False,
+                    guardrails_result=content_check,
+                )
+
         if not self._config.is_ai_available():
             return AIGenerationResult(
                 workflow={},
@@ -154,7 +209,7 @@ class WorkflowAIGenerator:
                     raw_response=raw_response,
                 )
 
-            # 3. Validar workflow
+            # 3. Validar workflow (estructural)
             validation_errors = self._validate_workflow(workflow)
 
             if validation_errors:
@@ -170,7 +225,37 @@ class WorkflowAIGenerator:
                     raw_response=raw_response,
                 )
 
-            # 4. Workflow válido
+            # ── 4. ExecutionGuardrails + PIIGuardrails ────
+            if enable_guardrails:
+                exec_check = self._execution_guardrails.check_workflow_definition(workflow)
+                if exec_check.action == GuardrailAction.BLOCK:
+                    return AIGenerationResult(
+                        workflow=workflow,
+                        provider=provider_config.provider.value,
+                        model=provider_config.model,
+                        explanation=exec_check.message,
+                        validated=False,
+                        validation_errors=[f"Execution blocked: {exec_check.message}"],
+                        fallback_used=False,
+                        raw_response=raw_response,
+                        guardrails_result=exec_check,
+                    )
+
+                pii_check = self._pii_guardrails.check_workflow_for_pii(workflow)
+                if pii_check.action == GuardrailAction.BLOCK:
+                    return AIGenerationResult(
+                        workflow=workflow,
+                        provider=provider_config.provider.value,
+                        model=provider_config.model,
+                        explanation=pii_check.message,
+                        validated=False,
+                        validation_errors=[f"PII blocked: {pii_check.message}"],
+                        fallback_used=False,
+                        raw_response=raw_response,
+                        guardrails_result=pii_check,
+                    )
+
+            # 5. Workflow válido (pasó validación + guardrails)
             explanation = self._generate_explanation(workflow, lang)
             return AIGenerationResult(
                 workflow=workflow,

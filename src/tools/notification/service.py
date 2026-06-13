@@ -2,8 +2,6 @@
 Workflow Determinista — Notification Service
 """
 
-from cryptography.fernet import Fernet
-
 from src.config import WHATSAPP_ENCRYPTION_KEY
 from src.data.database_manager import DatabaseManager
 from src.utils.logger import setup_logging
@@ -208,12 +206,14 @@ class NotificationService:
     @staticmethod
     def _encrypt_token(token: str) -> str:
         """Cifra el token WhatsApp antes de guardarlo."""
+        from cryptography.fernet import Fernet
         f = Fernet(WHATSAPP_ENCRYPTION_KEY)
         return f.encrypt(token.encode()).decode()
 
     @staticmethod
     def _decrypt_token(encrypted: str) -> str:
         """Descifra el token WhatsApp al usarlo."""
+        from cryptography.fernet import Fernet
         f = Fernet(WHATSAPP_ENCRYPTION_KEY)
         return f.decrypt(encrypted.encode()).decode()
 

@@ -270,7 +270,7 @@ class ConnectorRepository:
         offset = (page - 1) * per_page
         rows = self._db.fetchall(
             f"SELECT * FROM marketplace_connectors {where} ORDER BY installs DESC, rating DESC LIMIT ? OFFSET ?",
-            tuple(params) + (per_page, offset),
+            (*tuple(params), per_page, offset),
         )
 
         connectors = [self._row_to_connector(r) for r in rows]

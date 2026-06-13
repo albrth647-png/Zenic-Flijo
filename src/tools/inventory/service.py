@@ -61,6 +61,10 @@ class InventoryService:
     ) -> list[dict]:
         return self._repo.list_products(category, low_stock_only, user_id)
 
+    def update_product(self, product_id: int, **fields) -> dict | None:
+        """Actualiza campos de un producto (nombre, precio, descripción, etc.)."""
+        return self._repo.update_product(product_id, **fields)
+
     def delete_product(self, product_id: int) -> bool:
         return self._repo.delete_product(product_id)
 

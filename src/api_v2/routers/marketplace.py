@@ -31,6 +31,12 @@ from src.api_v2.models import (
     MarketplaceStats,
 )
 from src.utils.logger import setup_logging
+from src.workflow.repository import WorkflowDefinition, WorkflowRepository
+from src.workflow.workflow_templates import (
+    get_template,
+    list_categories as list_template_categories,
+    list_templates,
+)
 
 logger = setup_logging(__name__)
 
@@ -331,3 +337,125 @@ async def marketplace_stats(
         total_categories=len(categories),
         featured_connectors=featured,
     )
+
+
+# ── Workflow Templates del Marketplace ───────────────────────
+
+
+@router.get(
+    "/templates",
+    summary="Listar plantillas de workflow del marketplace",
+    description=(
+        "Lista las plantillas de workflow pre-construidas que integran "
+        "conectores del marketplace. Filtrables por categoria, conector "
+        "o dificultad. Cada template se puede instalar como workflow."
+        "\n\n"
+        "Categorias: finance, communication, iam, productivity, monitoring"
+        "\n"
+        "Dificultades: beginner, intermediate, advanced"
+    ),
+    responses={401: {"model": ErrorResponse}},
+)
+async def list_workflow_templates(
+    user: dict[str, Any] = Depends(get_current_user),
+    category: str | None = None,
+    connector: str | None = None,
+    difficulty: str | None = None,
+) -> dict[str, Any]:
+    """Lista los templates de workflow del marketplace."""
+    templates = list_templates(
+        category=category,
+        connector=connector,
+        difficulty=difficulty,
+    )
+    return {
+        "total": len(templates),
+        "templates": templates,
+        "categories": list_template_categories(),
+    }
+
+
+@router.get(
+    "/templates/{name}",
+    summary="Detalles de plantilla de workflow",
+    description="Obtiene los detalles completos de una plantilla, incluyendo sus pasos.",
+    responses={404: {"model": ErrorResponse}, 401: {"model": ErrorResponse}},
+)
+async def get_workflow_template(
+    name: str,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Obtiene detalles de un template de workflow."""
+    template = get_template(name)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{name}' no encontrado",
+        )
+    return template
+
+
+@router.post(
+    "/templates/{name}/install",
+    summary="Instalar plantilla como workflow",
+    description=(
+        "Instala una plantilla como workflow en la instancia actual. "
+        "Convierte el template en una definicion de workflow completa "
+        "lista para ejecutar. Requiere que los conectores necesarios "
+        "esten instalados."
+    ),
+    responses={404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}},
+)
+async def install_workflow_template(
+    name: str,
+    user: dict[str, Any] = Depends(require_permission("workflow", "create")),
+    registry: Any = Depends(get_connector_registry),
+) -> dict[str, Any]:
+    """Instala un template como workflow usando WorkflowRepository."""
+    template = get_template(name)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{name}' no encontrado",
+        )
+
+    # Verificar que los conectores requeridos estén registrados
+    missing: list[str] = []
+    for conn in template.get("connectors", []):
+        if not registry.exists(conn):
+            missing.append(conn)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": f"Conectores requeridos no disponibles: {', '.join(missing)}",
+                "missing_connectors": missing,
+                "template": name,
+            },
+        )
+
+    # Crear el workflow via WorkflowRepository (respeta licencias, audit, etc.)
+    try:
+        wf_repo = WorkflowRepository()
+        wf_def = wf_repo.create(
+            WorkflowDefinition(
+                name=template["label"],
+                description=template["description_es"],
+                trigger_type=template["trigger"]["type"],
+                trigger_config=template["trigger"]["config"],
+                steps=template["steps"],
+            ),
+            user_id=user.get("user_id", 1),
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+    return {
+        "status": "installed",
+        "template": name,
+        "workflow_id": wf_def.id,
+        "message": f"Template '{template['label']}' instalado como workflow ID {wf_def.id}",
+    }

@@ -46,7 +46,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0 or norm_b == 0:
@@ -307,7 +307,7 @@ class AgentMemory:
             entry_type=row[3],
             importance=row[4],
             embedding=embedding,
-            metadata=eval(row[6]) if len(row) > 6 and row[6] else {},  # noqa: S307
+            metadata=eval(row[6]) if len(row) > 6 and row[6] else {},
             timestamp=row[7],
             access_count=row[8] if len(row) > 8 else 0,
             last_accessed=row[9] if len(row) > 9 else 0.0,

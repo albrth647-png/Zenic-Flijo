@@ -472,6 +472,19 @@ class WorkflowRepository:
         )
         return [WorkflowDefinition.from_dict(r) for r in rows]
 
+    def create_from_dict(self, data: dict) -> WorkflowDefinition:
+        """Create a workflow from a dict (used by sync import)."""
+        import copy
+        wf_data = copy.deepcopy(data)
+        wf_data.pop("id", None)
+        return self.create(WorkflowDefinition(
+            name=wf_data.get("name", "Imported Workflow"),
+            description=wf_data.get("description", ""),
+            trigger_type=wf_data.get("trigger_type", "manual"),
+            trigger_config=wf_data.get("trigger_config", {}),
+            steps=wf_data.get("steps", []),
+        ))
+
     def get_stats(self, user_id: int | None = None) -> dict:
         """Retorna estadísticas para el dashboard, opcionalmente filtradas por usuario."""
         if user_id:

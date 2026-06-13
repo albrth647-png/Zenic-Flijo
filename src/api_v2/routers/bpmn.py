@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.api_v2.dependencies import require_permission
-from src.bpmn import BPMNBuilder, BPMNExporter, BPMNParser, BPMNProcess, BPMNToWorkflowConverter
+from src.bpmn import BPMNExporter, BPMNParser, BPMNProcess, BPMNToWorkflowConverter
 
 router = APIRouter(prefix="/bpmn", tags=["bpmn"])
 

@@ -14,7 +14,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Cuando un nuevo cliente se registra, guardarlo en CRM y enviar email de bienvenida",
         "description_en": "When a new customer registers, save them to CRM and send a welcome email",
         "keywords_es": ["registr", "nuev", "client", "guard", "cre", "agreg", "lead", "contact"],
-        "keywords_en": ["regist", "new", "client", "custom", "save", "creat", "add", "lead", "contact"],
+        "keywords_en": ["regist", "new", "client", "custom", "save", "creat", "add", "lead", "contact", "welcom", "sign", "join", "subscrib"],
         "trigger": {"type": "event", "config": {"event": "crm.lead.created"}},
         "steps": [
             {
@@ -41,7 +41,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Revisar inventario diariamente y alertar cuando productos tengan stock bajo",
         "description_en": "Check inventory daily and alert when products are low on stock",
         "keywords_es": ["inventari", "stock", "baj", "alert", "compr", "product", "reorden"],
-        "keywords_en": ["invent", "stock", "low", "alert", "purchas", "product", "reorder"],
+        "keywords_en": ["invent", "stock", "low", "alert", "purchas", "product", "reorder", "shortage", "supply", "warehous", "restock"],
         "trigger": {"type": "schedule", "config": {"cron": "0 9 * * *"}},
         "steps": [
             {"id": 1, "tool": "inventory", "action": "get_low_stock_products"},
@@ -63,7 +63,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Generar facturas pendientes cada lunes",
         "description_en": "Generate pending invoices every Monday",
         "keywords_es": ["factur", "invoice", "cobr", "pago", "venc", "semanal"],
-        "keywords_en": ["invoic", "bill", "charg", "payment", "due", "weekly"],
+        "keywords_en": ["invoic", "bill", "charg", "payment", "due", "weekly", "monday", "pend", "outstand", "recur"],
         "trigger": {"type": "schedule", "config": {"cron": "0 9 * * 1"}},
         "steps": [
             {"id": 1, "tool": "invoice", "action": "get_overdue_invoices"},
@@ -81,7 +81,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Hacer respaldo automático de la base de datos cada noche",
         "description_en": "Automatic database backup every night",
         "keywords_es": ["backup", "respaldo", "copi", "seguridad", "base", "datos", "noche"],
-        "keywords_en": ["backup", "sav", "copi", "secur", "databas", "night"],
+        "keywords_en": ["backup", "sav", "copi", "secur", "databas", "night", "daili", "restor", "snapshot", "protect"],
         "trigger": {"type": "schedule", "config": {"cron": "0 23 * * *"}},
         "steps": [
             {"id": 1, "tool": "system", "action": "backup_database"},
@@ -93,7 +93,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Enviar emails de felicitación a clientes en su cumpleaños",
         "description_en": "Send birthday greeting emails to customers",
         "keywords_es": ["cumpleañ", "cumple", "felic", "navidad", "aniversari", "salud"],
-        "keywords_en": ["birthday", "happy", "anniversari", "christma", "greet"],
+        "keywords_en": ["birthday", "happy", "anniversari", "christma", "greet", "congrat", "celeb", "wish", "occasion"],
         "trigger": {"type": "schedule", "config": {"cron": "0 8 * * *"}},
         "steps": [
             {"id": 1, "tool": "notification", "action": "send_birthday_emails"},
@@ -105,7 +105,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Cuando un lead cambia de etapa, notificar al equipo",
         "description_en": "When a lead changes stage, notify the team",
         "keywords_es": ["lead", "etap", "avanz", "oportunidad", "vent", "pipeline", "negoci"],
-        "keywords_en": ["lead", "stage", "advanc", "opportun", "sale", "pipeline", "deal"],
+        "keywords_en": ["lead", "stage", "advanc", "opportun", "sale", "pipeline", "deal", "progres", "move", "funnel", "qualif"],
         "trigger": {"type": "event", "config": {"event": "crm.lead.stage_changed"}},
         "steps": [
             {
@@ -126,7 +126,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Cuando una factura vence, notificar al cliente",
         "description_en": "When an invoice becomes overdue, notify the customer",
         "keywords_es": ["factur", "venc", "moros", "pago", "pendient", "cobranz"],
-        "keywords_en": ["invoic", "overdu", "due", "payment", "pending", "collect"],
+        "keywords_en": ["invoic", "overdu", "due", "payment", "pending", "collect", "late", "remind", "follow", "debt"],
         "trigger": {"type": "event", "config": {"event": "invoice.overdue"}},
         "steps": [
             {"id": 1, "tool": "invoice", "action": "get_invoice", "params": {"invoice_id": "$input.invoice_id"}},
@@ -148,7 +148,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Cuando un producto se agota, notificar al administrador",
         "description_en": "When a product runs out of stock, notify the admin",
         "keywords_es": ["product", "agot", "sin", "stock", "cero", "faltant"],
-        "keywords_en": ["product", "out", "stock", "zero", "miss", "unavail"],
+        "keywords_en": ["product", "out", "stock", "zero", "miss", "unavail", "empti", "sold", "exhaust", "deplet"],
         "trigger": {"type": "event", "config": {"event": "inventory.stock_out"}},
         "steps": [
             {
@@ -169,7 +169,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Ejecutar acciones cuando se recibe un webhook externo",
         "description_en": "Run actions when an external webhook is received",
         "keywords_es": ["webhook", "extern", "api", "http", "post", "recib"],
-        "keywords_en": ["webhook", "extern", "api", "http", "post", "receiv"],
+        "keywords_en": ["webhook", "extern", "api", "http", "post", "receiv", "calback", "payload", "trigger", "incom"],
         "trigger": {"type": "webhook", "config": {}},
         "steps": [
             {
@@ -186,7 +186,7 @@ TEMPLATES: list[dict] = [
         "description_es": "Cuando se crea un archivo nuevo en una carpeta, procesarlo",
         "description_en": "When a new file is created in a folder, process it",
         "keywords_es": ["archiv", "nuev", "carpet", "directori", "csv", "excel", "sub"],
-        "keywords_en": ["file", "new", "folder", "directori", "csv", "excel", "upload"],
+        "keywords_en": ["file", "new", "folder", "directori", "csv", "excel", "upload", "creat", "document", "attacht", "import"],
         "trigger": {"type": "event", "config": {"event": "file.created"}},
         "steps": [
             {

@@ -28,6 +28,7 @@ from src.marketplace.models import (
 )
 from src.marketplace.repository import ConnectorRepository
 from src.marketplace.service import MarketplaceService
+from src.workflow.workflow_templates import get_template, list_templates, template_to_workflow_definition
 
 __all__ = [
     "CertificationEngine",
@@ -42,4 +43,7 @@ __all__ = [
     "MarketplaceService",
     "MarketplaceStats",
     "ReviewRecord",
+    "get_template",
+    "list_templates",
+    "template_to_workflow_definition",
 ]

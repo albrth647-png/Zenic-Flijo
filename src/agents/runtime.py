@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import threading
 import time
-import uuid
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from src.agents.base import AgentConfig, AgentState, BaseAgent

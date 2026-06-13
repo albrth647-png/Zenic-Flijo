@@ -1,0 +1,29 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: zenic-flujo-gateway
+  namespace: zenic-flujo
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        # ⚠️ Istio requiere secrets TLS en el namespace del ingress gateway (istio-system)
+        # Copiar el secret al namespace correcto:
+        # kubectl get secret zenic-flujo-tls -n zenic-flujo -o yaml | sed 's/namespace: zenic-flujo/namespace: istio-system/' | kubectl apply -f -
+        credentialName: zenic-flujo-tls
+      hosts:
+        - app.zenic-flujo.io
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - app.zenic-flujo.io
+      tls:
+        httpsRedirect: true

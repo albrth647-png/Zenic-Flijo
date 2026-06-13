@@ -14,10 +14,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.agents.base import AgentCapability, AgentConfig, AgentState, BaseAgent
+from src.agents.base import AgentConfig, AgentState, BaseAgent
 from src.agents.orchestrator import (
     MultiAgentOrchestrator,
-    OrchestrationPattern,
     OrchestrationPlan,
 )
 from src.agents.runtime import AgentRuntime

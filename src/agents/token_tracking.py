@@ -18,7 +18,6 @@ import sqlite3
 import threading
 import time
 import uuid
-from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -366,7 +365,7 @@ class TokenCostTracker:
         # Get current spend
         now = time.time()
         day_start = now - (now % 86400)
-        month_start = now - ((now % (86400 * 30)))  # Approximate
+        month_start = now - (now % (86400 * 30))  # Approximate
 
         daily_spend = self._get_spend(tenant_id, day_start, now)
         monthly_spend = self._get_spend(tenant_id, month_start, now)

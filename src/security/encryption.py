@@ -23,14 +23,24 @@ import secrets
 import threading
 from datetime import UTC, datetime
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-
 from src.data.database_manager import DatabaseManager
 from src.utils.logger import setup_logging
+
+# ── Cryptography lazy loading ────────────────────────────
+# cryptography necesita libgcc_s.so.1 (glibc) que no está disponible
+# en todos los entornos (ej. Termux/bionic). Los imports se hacen
+# dentro de los métodos que los usan para permitir que el servidor
+# arranque sin cryptography instalada.
+_CRYPTOGRAPHY_AVAILABLE = False
+try:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    _CRYPTOGRAPHY_AVAILABLE = True
+except ImportError:
+    pass
 
 logger = setup_logging(__name__)
 
@@ -77,6 +87,19 @@ class EncryptionService:
                 return
             self._initialized = True
             self._db = DatabaseManager()
+            self._crypto_available = _CRYPTOGRAPHY_AVAILABLE
+
+            if not self._crypto_available:
+                logger.warning(
+                    "EncryptionService: cryptography no disponible. "
+                    "Cifrado/descifrado NO disponible. Instala cryptography o "
+                    "asegura que libgcc_s.so.1 esté en LD_LIBRARY_PATH."
+                )
+                self._key_cache = {}
+                self._rsa_private_key = None
+                self._kek = b""
+                return
+
             self._ensure_tables()
 
             # Caché de claves desenvueltas en memoria

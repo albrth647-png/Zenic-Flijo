@@ -433,7 +433,6 @@ async def health_check() -> HealthResponse:
 
     # Verificar BPMN engine (Phase 3)
     try:
-        from src.bpmn import BPMNParser
 
         services["bpmn_engine"] = "healthy"
     except Exception:

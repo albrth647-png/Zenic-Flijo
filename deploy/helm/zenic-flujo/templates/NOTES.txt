@@ -1,0 +1,38 @@
+🎯 Zenic-Flijo — Instalación completada exitosamente!
+
+📋 Resumen:
+  Aplicación: {{ include "zenic-flujo.fullname" . }}
+  Namespace: {{ .Release.Namespace }}
+  Réplicas: {{ .Values.replicaCount }}
+  HPA: {{ .Values.autoscaling.enabled | ternary "Activado" "Desactivado" }}
+
+🔗 Acceso:
+  1. Obtén la URL del servicio:
+     kubectl get ingress -n {{ .Release.Namespace }} {{ include "zenic-flujo.fullname" . }}
+
+  2. O bien, forward del puerto local:
+     kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "zenic-flujo.fullname" . }} 8080:8080
+
+  3. Abre http://localhost:8080 en tu navegador
+
+🔐 Configuración inicial requerida:
+  1. Accede a la web UI y configura:
+     - Licencia (Settings → License)
+     - Usuario admin (por defecto: admin / admin)
+     - Conectores en el Marketplace
+
+📊 Monitoreo:
+  - Prometheus: puerto 8080, path /metrics
+  - ServiceMonitor: {{ .Values.serviceMonitor.enabled | ternary "Configurado" "No configurado" }}
+
+🔄 Actualización:
+  helm upgrade {{ .Release.Name }} . -n {{ .Release.Namespace }}
+
+⚙️ Variables importantes (values.yaml):
+  - config.WFD_SESSION_SECRET: Cambiar obligatoriamente
+  - config.WFD_LICENSE_SECRET: Cambiar obligatoriamente
+  - externalServices.postgres: Configurar URL de PostgreSQL
+  - externalServices.redis: Configurar URL de Redis
+
+📚 Documentación completa:
+  https://github.com/albrth647-png/Zenic-Flijo

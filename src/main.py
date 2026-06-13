@@ -154,6 +154,47 @@ def main():
     db = DatabaseManager()
     logger.info(f"Base de datos: {db._db_path}")
 
+    # 1b. Seed: crear usuario admin por defecto si no existe ningún usuario
+    try:
+        existing_users = db.fetchall("SELECT COUNT(*) as count FROM users")
+        if existing_users and existing_users[0]["count"] == 0:
+            import hashlib
+            import secrets
+            # Usar hashlib.pbkdf2_hmac en vez de bcrypt para evitar dependencia de libgcc en Termux
+            default_password = "admin123"
+            _pbkdf2_iterations = 600000
+            salt = secrets.token_hex(16)
+            hashed = hashlib.pbkdf2_hmac("sha256", default_password.encode(), salt.encode(), iterations=_pbkdf2_iterations).hex()
+            stored_hash = f"pbkdf2:sha256:{_pbkdf2_iterations}:{salt}:{hashed}"
+
+            # Legacy fallback: guardar en settings
+            legacy_hash = db.get_setting("admin_password_hash")
+            if not legacy_hash:
+                db.set_setting("admin_password_hash", stored_hash)
+
+            # Crear usuario en tabla users (bcrypt interno, puede fallar en Termux -> fallback)
+            try:
+                db.create_user(
+                    username="admin",
+                    password="admin123",
+                    role="admin",
+                    display_name="Administrador",
+                    email="admin@localhost",
+                )
+            except Exception as create_err:
+                logger.warning(f"Seed: create_user con bcrypt falló ({create_err}), insert manual")
+                # Insert manual con hash pbkdf2
+                db.execute(
+                    "INSERT INTO users (username, password_hash, role, display_name, email) VALUES (?, ?, ?, ?, ?)",
+                    ("admin", stored_hash, "admin", "Administrador", "admin@localhost"),
+                )
+                db.commit()
+
+            logger.info("Seed: usuario admin creado (username: admin / password: admin123)")
+            logger.info("⚠️  CAMBIA LA CONTRASEÑA en Settings > Cambiar contraseña después del primer ingreso.")
+    except Exception as seed_err:
+        logger.warning(f"Seed: no se pudo crear usuario por defecto ({seed_err}). Puedes crear uno manualmente.")
+
     # 2. Registrar herramientas de negocio
     register_tools()
 

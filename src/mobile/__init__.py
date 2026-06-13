@@ -26,6 +26,6 @@ from src.mobile.sync import OfflineSyncManager
 
 __all__ = [
     "MobileAPIRouter",
-    "PushNotificationService",
     "OfflineSyncManager",
+    "PushNotificationService",
 ]

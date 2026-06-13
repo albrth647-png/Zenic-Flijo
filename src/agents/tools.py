@@ -11,8 +11,9 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from src.utils.logger import get_logger
 
@@ -356,7 +357,6 @@ class AgentToolRegistry:
     def _tool_workflow_execute(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute a workflow via the WorkflowEngine."""
         workflow_id = params.get("workflow_id", "")
-        input_data = params.get("input_data", {})
         return {
             "status": "dispatched",
             "workflow_id": workflow_id,
@@ -378,7 +378,6 @@ class AgentToolRegistry:
         """Call a connector action."""
         connector_name = params.get("connector_name", "")
         action = params.get("action", "")
-        call_params = params.get("params", {})
         return {
             "status": "dispatched",
             "connector": connector_name,
@@ -397,7 +396,6 @@ class AgentToolRegistry:
 
     def _tool_code_execute(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute code in sandbox."""
-        code = params.get("code", "")
         return {
             "status": "dispatched",
             "message": "Code execution dispatched to sandbox",
@@ -415,7 +413,6 @@ class AgentToolRegistry:
     def _tool_file_write(self, params: dict[str, Any]) -> dict[str, Any]:
         """Write to a file."""
         path = params.get("path", "")
-        content = params.get("content", "")
         return {
             "status": "dispatched",
             "path": path,

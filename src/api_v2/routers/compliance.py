@@ -16,7 +16,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.api_v2.dependencies import require_permission
 from src.compliance import (
-    ComplianceControl,
     ComplianceManager,
     ControlStatus,
     EvidenceType,

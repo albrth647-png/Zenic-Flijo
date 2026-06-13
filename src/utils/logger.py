@@ -26,6 +26,14 @@ class AuditLogger:
         logging.getLogger("audit").info(msg)
 
 
+def get_logger(name: str = "workflow_determinista") -> logging.Logger:
+    """Obtiene un logger configurado para el módulo especificado.
+
+    Es un alias de setup_logging() para compatibilidad con imports existentes.
+    """
+    return setup_logging(name)
+
+
 def setup_logging(name: str = "workflow_determinista") -> logging.Logger:
     """Configura el logging del sistema."""
     logger = logging.getLogger(name)

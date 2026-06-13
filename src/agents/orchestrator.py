@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from src.agents.base import AgentConfig, AgentMessage, AgentState, BaseAgent
+from src.agents.base import AgentConfig, BaseAgent
 from src.agents.runtime import AgentRuntime
 from src.utils.logger import get_logger
 
@@ -103,7 +103,7 @@ class SequentialStrategy(OrchestrationStrategy):
 
         current_input = plan.input_data
 
-        for i, (agent_class, config) in enumerate(zip(plan.agent_classes, plan.agent_configs)):
+        for i, (agent_class, config) in enumerate(zip(plan.agent_classes, plan.agent_configs, strict=True)):
             try:
                 agent = runtime.spawn(agent_class, config)
                 output = agent.run(current_input)
@@ -145,7 +145,7 @@ class ParallelStrategy(OrchestrationStrategy):
         )
 
         agents = []
-        for agent_class, config in zip(plan.agent_classes, plan.agent_configs):
+        for agent_class, config in zip(plan.agent_classes, plan.agent_configs, strict=True):
             try:
                 agent = runtime.spawn(agent_class, config)
                 agents.append(agent)
@@ -287,7 +287,7 @@ class DebateStrategy(OrchestrationStrategy):
         )
 
         agents = []
-        for agent_class, config in zip(plan.agent_classes, plan.agent_configs):
+        for agent_class, config in zip(plan.agent_classes, plan.agent_configs, strict=True):
             try:
                 agent = runtime.spawn(agent_class, config)
                 agents.append(agent)
@@ -347,7 +347,7 @@ class RoundRobinStrategy(OrchestrationStrategy):
         )
 
         agents = []
-        for agent_class, config in zip(plan.agent_classes, plan.agent_configs):
+        for agent_class, config in zip(plan.agent_classes, plan.agent_configs, strict=True):
             try:
                 agent = runtime.spawn(agent_class, config)
                 agents.append(agent)
@@ -426,7 +426,7 @@ class MapReduceStrategy(OrchestrationStrategy):
         map_results = []
         with ThreadPoolExecutor(max_workers=len(mapper_classes)) as executor:
             futures = {}
-            for i, (agent_class, config) in enumerate(zip(mapper_classes, mapper_configs)):
+            for i, (agent_class, config) in enumerate(zip(mapper_classes, mapper_configs, strict=True)):
                 chunk = chunks[i] if i < len(chunks) else input_data
                 try:
                     agent = runtime.spawn(agent_class, config)

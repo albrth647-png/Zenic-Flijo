@@ -1,5 +1,5 @@
 """
-DDE v3 — Pipeline Orquestador (Etapas 1-13)
+DDE v3 — Pipeline Orquestador (Etapas 1-13 + Fase 3 Upgrades)
 
 Orquesta las etapas del pipeline NLU determinista + IA:
 1. Normalizer
@@ -15,11 +15,17 @@ Orquesta las etapas del pipeline NLU determinista + IA:
 11. DryRunSimulator
 12. AI WorkflowGenerator (opcional)
 
-El pipeline ofrece cuatro modos:
+Fase 3 — Mejoras:
+- Guardrails: ContentGuardrails en prompts, ExecutionGuardrails + PIIGuardrails en workflows
+- Fallback Hierarchy: determinista → orbital → IA → template genérico
+- Modo smart_compile(): ejecuta cadena de fallback automática
+
+El pipeline ofrece cinco modos:
 - process() → NLUResult (etapas 1-6: análisis)
 - compile() → CompileResult (etapas 7-11: compilación completa)
 - simulate() → DryRunResult (etapa 12: simulación sin ejecutar)
 - ai_generate() → AIGenerationResult (etapa 13: generación con IA)
+- smart_compile() → NLU con guardrails + fallback hierarchy (Fase 3)
 
 Determinista: misma entrada → misma salida.
 IA: complemento opcional que genera workflows desde texto libre.
@@ -38,16 +44,24 @@ from src.nlu.entities.extractor import EntityExtractor
 from src.nlu.entities.money import MoneyExtractor
 from src.nlu.entities.quantity import QuantityExtractor
 from src.nlu.explainer import Explainer
+from src.nlu.fallback import FallbackConfig, FallbackOrchestrator
+from src.nlu.guardrails import GuardrailManager
 from src.nlu.intent_classifier import IntentClassifier
 from src.nlu.language_router import LanguageRouter
 from src.nlu.normalizer import normalize
 from src.nlu.slot_filler import SlotFiller
 from src.nlu.tokenizer import tokenize
 from src.nlu.validator import WorkflowValidator
+from src.utils.logger import setup_logging
+
+logger = setup_logging(__name__)
 
 
 class Pipeline:
-    """Orquestador del pipeline NLU determinista (etapas 1-12 + 13 IA)."""
+    """Orquestador del pipeline NLU determinista (etapas 1-12 + 13 IA).
+
+    Fase 3: Integra guardrails y fallback hierarchy.
+    """
 
     def __init__(self):
         # Etapas 1-5
@@ -69,6 +83,152 @@ class Pipeline:
 
         # Etapa 13: AI Generator (opcional)
         self._ai_generator = WorkflowAIGenerator()
+
+        # ── Fase 3: Guardrails ───────────────────────────
+        self._guardrails = GuardrailManager(lang="es")
+
+        # ── Fase 3: Fallback Hierarchy ───────────────────
+        self._fallback_orchestrator = FallbackOrchestrator()
+
+        # Orbital compiler para fallback (lazy import)
+        self._orbital_compiler = None
+
+    @property
+    def _orbital(self):
+        """Lazy import del OrbitalCompiler para evitar dependencia circular."""
+        if self._orbital_compiler is None:
+            from src.orbital.orbital_compiler import OrbitalCompiler
+
+            self._orbital_compiler = OrbitalCompiler()
+        return self._orbital_compiler
+
+    @property
+    def guardrails(self) -> GuardrailManager:
+        """Acceso al gestor de guardrails."""
+        return self._guardrails
+
+    @property
+    def fallback_stats(self) -> dict:
+        """Estadísticas de la jerarquía de fallback."""
+        return self._fallback_orchestrator.get_stats()
+
+    # ── SMART COMPILE (Fase 3) ────────────────────────────
+
+    def smart_compile(
+        self,
+        text: str,
+        lang: str | None = None,
+        enable_guardrails: bool = True,
+        enable_fallback: bool = True,
+    ) -> dict:
+        """Pipeline inteligente con guardrails + fallback hierarchy (Fase 3).
+
+        Flujo:
+        1. ContentGuardrails: verificar prompt del usuario
+        2. FallbackOrchestrator: determinista → orbital → IA → template
+        3. ExecutionGuardrails + PIIGuardrails: verificar workflow generado
+        4. Retornar resultado con metadata de guardrails y fallback
+
+        Args:
+            text: Texto en lenguaje natural del usuario
+            lang: Idioma forzado (auto-detect si None)
+            enable_guardrails: Si aplicar guardrails
+            enable_fallback: Si activar la jerarquía de fallback
+
+        Returns:
+            Dict con: success, result, guardrails_result, fallback_result
+        """
+        result: dict = {
+            "success": False,
+            "result": None,
+            "guardrails_result": None,
+            "fallback_result": None,
+            "explicacion": "",
+        }
+
+        detected_lang = lang or self._router.detect(text)
+
+        # ── 1. ContentGuardrails ─────────────────────────
+        if enable_guardrails:
+            guardrails_result = self._guardrails.check_prompt(text)
+            result["guardrails_result"] = guardrails_result
+
+            if guardrails_result.blocked:
+                # Si está bloqueado, buscar el primer mensaje de bloqueo
+                block_messages = [r.message for r in guardrails_result.blocks]
+                result["explicacion"] = block_messages[0] if block_messages else "Contenido bloqueado por guardrails"
+                logger.warning(f"SmartCompile bloqueado por guardrails: {guardrails_result.blocks}")
+                return result
+
+            if guardrails_result.warnings:
+                for w in guardrails_result.warnings:
+                    logger.info(f"Guardrail warning: {w.message}")
+
+        # ── 2. Fallback Hierarchy ────────────────────────
+        if enable_fallback:
+            fallback_config = FallbackConfig(lang=detected_lang)
+
+            def _det_func(text_input: str, lang_input: str) -> CompileResult:
+                return self.compile(text_input, lang_input)
+
+            def _orbital_func(text_input: str, ctx: dict | None = None) -> object:
+                return self._orbital.compile(text_input, ctx)
+
+            def _ai_func(text_input: str, lang_input: str) -> AIGenerationResult:
+                return self._ai_generator.generate(text_input, lang_input)
+
+            # Crear orchestrator temporal para esta compilación
+            orchestrator = FallbackOrchestrator(fallback_config)
+
+            fb_result = orchestrator.process(
+                text=text,
+                deterministic_func=_det_func,
+                orbital_func=_orbital_func if fallback_config.allow_orbital_fallback else None,
+                ai_func=_ai_func if fallback_config.allow_ai_fallback else None,
+                lang=detected_lang,
+            )
+
+            result["fallback_result"] = fb_result
+
+            if not fb_result.success:
+                result["explicacion"] = "No se pudo procesar la solicitud en ningún nivel de la jerarquía"
+                return result
+
+            # Extraer workflow del resultado, manejando diferentes tipos
+            wf_result = fb_result.result
+            workflow = {}
+
+            if hasattr(wf_result, "workflow"):
+                workflow = wf_result.workflow
+            elif isinstance(wf_result, dict):
+                workflow = wf_result
+
+            if not workflow or not isinstance(workflow, dict) or not workflow.get("steps"):
+                result["result"] = wf_result
+                result["explicacion"] = fb_result.explanation
+                result["success"] = True
+                return result
+
+            # ── 3. ExecutionGuardrails + PIIGuardrails ────
+            if enable_guardrails and isinstance(workflow, dict) and workflow.get("steps"):
+                wf_guardrails = self._guardrails.check_workflow(workflow)
+                if wf_guardrails.blocked:
+                    result["explicacion"] = "; ".join(r.message for r in wf_guardrails.blocks)
+                    logger.warning(f"Workflow bloqueado por guardrails: {wf_guardrails.blocks}")
+                    return result
+
+            result["result"] = workflow
+            result["explicacion"] = fb_result.explanation
+            result["success"] = True
+
+        else:
+            # Modo sin fallback: usar determinista directamente
+            compile_result = self.compile(text, lang)
+            result["result"] = compile_result.workflow
+            result["explicacion"] = compile_result.explanation
+            result["success"] = compile_result.status == "ready"
+
+        return result
 
     def ai_generate(self, text: str, lang: str = "es") -> AIGenerationResult:
         """Genera un workflow usando IA (etapa 13).
@@ -274,6 +434,26 @@ class Pipeline:
             missing_slots=(),
             status="ready",
         )
+
+    def compile_with_guardrails(
+        self,
+        text: str,
+        lang: str | None = None,
+    ) -> dict:
+        """Compila un workflow con guardrails (Fase 3).
+
+        Igual que smart_compile pero sin fallback hierarchy.
+        Útil cuando se quiere solo determinista + guardrails.
+        """
+        return self.smart_compile(text, lang, enable_guardrails=True, enable_fallback=False)
+
+    def get_fallback_stats(self) -> dict:
+        """Retorna estadísticas de la jerarquía de fallback."""
+        return self._fallback_orchestrator.get_stats()
+
+    def reset_fallback_stats(self) -> None:
+        """Reinicia estadísticas de fallback."""
+        self._fallback_orchestrator.reset_stats()
 
 
 # ── Funciones de conveniencia ──────────────────────────

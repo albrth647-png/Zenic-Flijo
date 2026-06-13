@@ -5,8 +5,8 @@ Uso: python scripts/generate_license_key.py --type individual --client "Cliente 
 """
 
 import argparse
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from src.license.generator import LicenseGenerator
@@ -22,7 +22,7 @@ def main():
     args = parser.parse_args()
     gen = LicenseGenerator()
     key = gen.generate(args.type, args.client, args.days)
-    print(f"\n⚙️  License Key Generada")
+    print("\n⚙️  License Key Generada")
     print(f"{'=' * 40}")
     print(f"  {key}")
     print(f"{'=' * 40}")

@@ -14,7 +14,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.headers = {"content-type": "application/json"}
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {"id": 1, "name": "Test"}
         mock_response.elapsed.total_seconds.return_value = 0.5
 
@@ -27,14 +27,13 @@ class TestAPIConnectorService:
         assert result["status_code"] == 200
         assert result["body"] == {"id": 1, "name": "Test"}
         assert result["duration_ms"] >= 0
-        assert "content-type" in result["headers"]
+        assert "Content-Type" in result["headers"]
         # requests.request usa keyword arguments (method=, url=)
         mock_req.assert_called_once_with(
             method="GET",
             url="https://api.example.com/users/1",
             headers=None,
             json=None,
-            data=None,
             params=None,
             auth=None,
             timeout=30,
@@ -48,7 +47,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 201
-        mock_response.headers = {}
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {"id": 42}
         mock_response.elapsed.total_seconds.return_value = 0.3
 
@@ -71,6 +70,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {}
         mock_response.elapsed.total_seconds.return_value = 0.1
 
@@ -93,6 +93,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {}
         mock_response.elapsed.total_seconds.return_value = 0.1
 
@@ -115,6 +116,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {"results": []}
         mock_response.elapsed.total_seconds.return_value = 0.2
 
@@ -136,6 +138,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {}
         mock_response.elapsed.total_seconds.return_value = 0.1
 
@@ -159,6 +162,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {}
         mock_response.elapsed.total_seconds.return_value = 5.0
 
@@ -205,7 +209,7 @@ class TestAPIConnectorService:
             )
 
         assert "error" in result
-        assert "timed out" in result["error"].lower()
+        assert "timeout" in result["error"].lower()
 
     def test_request_non_json_response(self):
         """Test: respuesta no-JSON retorna texto como body."""
@@ -215,7 +219,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.headers = {"content-type": "text/plain"}
+        mock_response.headers = {"Content-Type": "text/plain"}
         mock_response.json.side_effect = ValueError("Not JSON")
         mock_response.text = "Hello, world!"
         mock_response.elapsed.total_seconds.return_value = 0.1
@@ -236,7 +240,7 @@ class TestAPIConnectorService:
 
         mock_response = MagicMock()
         mock_response.status_code = 400
-        mock_response.headers = {"content-type": "application/json"}
+        mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {"error": "Bad request", "details": "email inválido"}
         mock_response.elapsed.total_seconds.return_value = 0.1
 

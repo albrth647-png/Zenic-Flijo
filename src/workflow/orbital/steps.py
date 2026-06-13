@@ -1,0 +1,42 @@
+"""Orbital steps injection — convierte pasos de workflow en variables orbitales.
+
+Extraído de WorkflowEngine._inject_steps_as_orbital().
+"""
+
+from __future__ import annotations
+
+import hashlib
+
+from src.orbital.models import TWO_PI
+from src.utils.logger import setup_logging
+
+logger = setup_logging(__name__)
+
+
+def inject_steps_as_orbital(steps: list[dict], ovc) -> None:
+    """Convierte los pasos del workflow en variables orbitales (OVC compartido)."""
+    for step in steps:
+        step_id = step.get("id", 0)
+        tool = step.get("tool", "")
+        action = step.get("action", "")
+        var_name = f"step_{step_id}_{tool}"
+
+        try:
+            hash_val = int(hashlib.md5(f"{tool}.{action}".encode()).hexdigest()[:8], 16)
+            theta = (hash_val % 1000) / 1000.0 * TWO_PI
+            amplitude = 1.0
+            if step.get("condition"):
+                amplitude += 0.5
+            if step.get("type") in ("branch", "loop"):
+                amplitude += 1.0
+
+            ovc.create_variable(
+                name=var_name,
+                theta=theta,
+                amplitude=min(amplitude, 5.0),
+                velocity=0.1,
+                orbit_group="workflow_steps",
+                metadata={"step_id": step_id, "tool": tool, "action": action},
+            )
+        except ValueError:
+            pass  # Variable ya existe
