@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: true }
       }
 
-      return { success: false, error: result.error || "Error al crear la cuenta" }
+      return { success: false, error: result.message || result.error || "Error al crear la cuenta" }
     } catch {
       toast({
         title: "Error de conexión",
@@ -151,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       toast({
         title: "Algo salió mal",
-        description: data.error || "No pudimos iniciar sesión",
+        description: data.message || data.error || "No pudimos iniciar sesión",
         variant: "error",
       })
       return false

@@ -194,12 +194,15 @@ app = FastAPI(
 
 # ── CORS Middleware ────────────────────────────────────────────
 
-_cors_origins = os.environ.get("WFD_API_V2_CORS_ORIGINS", "*").split(",")
-_cors_allow_all = "*" in _cors_origins
+_cors_origins = os.environ.get("WFD_API_V2_CORS_ORIGINS", "").split(",")
+_cors_allow_all = len(_cors_origins) == 1 and _cors_origins[0] == ""
+
+# En producción, CORS debe ser explícito. Por defecto, no permitir orígenes arbitrarios.
+allow_origins = [] if _cors_allow_all else _cors_origins
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if _cors_allow_all else _cors_origins,
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -425,7 +428,7 @@ async def health_check() -> HealthResponse:
         from src.compliance import ComplianceManager
 
         manager = ComplianceManager.get_instance()
-        score = manager.calculate_compliance_score()
+        score = manager.calculate_framework_scores()
         services["compliance"] = "healthy"
         services["compliance_score"] = f"{score['overall_score']:.0f}%"
     except Exception:

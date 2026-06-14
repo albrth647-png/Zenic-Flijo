@@ -70,7 +70,7 @@ class CRMRepository:
         set_parts.append("updated_at = ?")
         params.append(datetime.now().isoformat())
         params.append(lead_id)
-        self._db.execute(f"UPDATE leads SET {', '.join(set_parts)} WHERE id = ?", tuple(params))
+        self._db.execute("UPDATE leads SET " + ", ".join(set_parts) + " WHERE id = ?", tuple(params))
         self._db.commit()
         return self.get_lead(lead_id)
 

@@ -300,6 +300,8 @@ class AgentMemory:
         embedding_str = row[5] if len(row) > 5 else ""
         embedding = [float(v) for v in embedding_str.split(",") if v] if embedding_str else []
 
+        import json
+
         return MemoryEntry(
             entry_id=row[0],
             agent_id=row[1],
@@ -307,7 +309,7 @@ class AgentMemory:
             entry_type=row[3],
             importance=row[4],
             embedding=embedding,
-            metadata=eval(row[6]) if len(row) > 6 and row[6] else {},
+            metadata=json.loads(row[6]) if len(row) > 6 and row[6] else {},
             timestamp=row[7],
             access_count=row[8] if len(row) > 8 else 0,
             last_accessed=row[9] if len(row) > 9 else 0.0,

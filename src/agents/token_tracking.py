@@ -288,15 +288,16 @@ class TokenCostTracker:
         # Check budgets
         self._check_budgets(tenant_id, cost)
 
+        # Sanitized log: avoid logging exact tokens/cost which could be sensitive
         logger.debug(
-            "Token usage: %s/%s %d+%d=%d tokens, $%.6f",
+            "Token usage: provider=%s model=%s tokens=%d cost_usd=<redacted>",
             provider,
             model,
-            input_tokens,
-            output_tokens,
             record.total_tokens,
-            cost,
         )
+
+        # Check budgets
+        self._check_budgets(tenant_id)
 
         return record
 
@@ -326,8 +327,9 @@ class TokenCostTracker:
                 ),
             )
             self._conn.commit()
-        except sqlite3.Error as exc:
-            logger.error("Failed to persist token usage: %s", exc)
+        except sqlite3.Error:
+            # Sanitized error log: avoid logging exception details which might contain sensitive info
+            logger.error("Failed to persist token usage: <error>")
 
     # ── Budgets ─────────────────────────────────────────────
 
@@ -356,8 +358,8 @@ class TokenCostTracker:
         if total_limit is not None:
             self._budgets[tenant_id]["total"] = total_limit
 
-    def _check_budgets(self, tenant_id: str, new_cost: float) -> None:
-        """Check if a new cost triggers any budget alerts."""
+    def _check_budgets(self, tenant_id: str) -> None:
+        """Check if current spend triggers any budget alerts."""
         budgets = self._budgets.get(tenant_id, {})
         if not budgets:
             return

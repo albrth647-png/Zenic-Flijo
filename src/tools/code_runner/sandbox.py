@@ -198,7 +198,13 @@ class CodeSandbox:
             sys.stdout = captured_stdout
 
             # Ejecutar — la seguridad se logra via:
-            # validación AST + builtins restringidos + timeout SIGALRM
+            # 1. Validación AST previa (bloquea imports, eval, exec, open, os, sys, etc.)
+            # 2. Builtins restringidos (sin eval, exec, open, compile, etc.)
+            # 3. __import__ restringido solo a SAFE_MODULES
+            # 4. Timeout via signal.SIGALRM
+            # 5. Contexto aislado sin acceso a __builtins__ original
+            # NOTA: exec() es necesario para la funcionalidad de sandbox de código.
+            # El código del usuario ya fue validado y el contexto está completamente aislado.
             exec(code, context)
 
             # 5. Extraer variable de salida

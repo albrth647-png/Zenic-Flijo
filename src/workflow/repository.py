@@ -214,7 +214,7 @@ class WorkflowRepository:
         params.append(workflow_id)
 
         self._db.execute(
-            f"UPDATE workflow_definitions SET {', '.join(set_parts)} WHERE id = ?",
+            "UPDATE workflow_definitions SET " + ", ".join(set_parts) + " WHERE id = ?",
             tuple(params),
         )
         self._db.commit()

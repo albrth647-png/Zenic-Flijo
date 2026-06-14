@@ -4,6 +4,7 @@ Prueba exhaustiva de todas las paginas y funcionalidades
 """
 import json
 import time
+
 from playwright.sync_api import sync_playwright
 
 BASE_URL = "http://127.0.0.1:5173/static/spa"
@@ -131,7 +132,7 @@ def run_test():
             "pages": results,
             "errors_detail": console_errors[:20]
         }
-        print(f"\nReporte completo en /tmp/pw_report.json")
+        print("\nReporte completo en /tmp/pw_report.json")
         with open("/tmp/pw_report.json", "w") as f:
             json.dump(report, f, indent=2, default=str)
 

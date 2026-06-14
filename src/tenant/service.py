@@ -1,6 +1,6 @@
 """
-Workflow Determinista — Multi-Tenancy Service
-==============================================
+Zenic-Flujo — Multi-Tenancy Service
+=====================================
 
 Servicio de multi-tenancy con modelo hibrido: DB-per-tenant (enterprise) y
 schema-per-tenant (SMB). Permite aislamiento de datos, resolucion de tenant
@@ -9,33 +9,37 @@ por subdominio/dominio/header/sesion, y configuracion por tenant.
 Funcionalidades:
 - Resolucion de tenant: subdominio, dominio custom, header X-Tenant-ID, sesion
 - Gestion de tenants: CRUD, suspender/activar, eliminar con cleanup
-- Aislamiento de BD: schema-per-tenant (SQLite/PostgreSQL) o DB-per-tenant (PostgreSQL)
+- Aislamiento de BD: schema-per-tenant o DB-per-tenant
 - Propagacion de contexto: thread-local tenant context + middleware Flask
 - Feature flags por tenant
 - Rate limits por tenant
 - Branding custom por tenant (logo, colores, dominio)
 - Data residency por tenant (region de almacenamiento)
-- Migraciones de schema por tenant
+
+Componentes extraidos:
+- context.py: Contexto thread-local (get/set/clear tenant_id)
+- storage.py: Aprovisionamiento de BD (TenantStorageProvisioner, TenantConnectionPool)
+- middleware.py: Middleware Flask (TenantMiddleware)
+- features.py: Feature flags por tenant (TenantFeatureManager)
 
 Configuracion via variables de entorno:
-- WFD_TENANT_DEFAULT_PLAN: Plan por defecto para nuevos tenants (default: free)
-- WFD_TENANT_ADMIN_DB: Path a la BD de administracion (default: auto)
-- WFD_TENANT_DOMAIN: Dominio base para resolucion por subdominio (default: zenic-flijo.com)
+- WFD_TENANT_DEFAULT_PLAN: Plan por defecto (default: free)
+- WFD_TENANT_DOMAIN: Dominio base (default: zenic-flijo.com)
+- WFD_TENANT_CACHE_TTL: TTL de cache Redis en segundos (default: 3600)
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
-import sqlite3
 import threading
 import uuid
-from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 from src.data.database_manager import DatabaseManager
 from src.data.redis_service import RedisService
+from src.tenant.features import TenantFeatureManager
+from src.tenant.storage import TENANT_PLANS, TenantConnectionPool, TenantStorageProvisioner
 from src.utils.logger import setup_logging
 
 logger = setup_logging(__name__)
@@ -45,50 +49,6 @@ logger = setup_logging(__name__)
 _DEFAULT_PLAN: str = os.environ.get("WFD_TENANT_DEFAULT_PLAN", "free")
 _TENANT_DOMAIN: str = os.environ.get("WFD_TENANT_DOMAIN", "zenic-flijo.com")
 _TENANT_CACHE_TTL: int = int(os.environ.get("WFD_TENANT_CACHE_TTL", "3600"))
-
-# Planes disponibles con sus limits
-TENANT_PLANS: ClassVar[dict[str, dict]] = {
-    "free": {
-        "max_workflows": 3,
-        "max_users": 2,
-        "max_executions_per_day": 100,
-        "features": ["basic_workflow", "crm"],
-        "db_isolation": "schema",
-    },
-    "smb": {
-        "max_workflows": 50,
-        "max_users": 25,
-        "max_executions_per_day": 5000,
-        "features": ["basic_workflow", "crm", "inventory", "invoice", "sso"],
-        "db_isolation": "schema",
-    },
-    "enterprise": {
-        "max_workflows": -1,
-        "max_users": -1,
-        "max_executions_per_day": -1,
-        "features": ["all"],
-        "db_isolation": "database",
-    },
-}
-
-# ── Thread-Local Tenant Context ───────────────────────────────
-
-_tenant_context = threading.local()
-
-
-def get_current_tenant_id() -> str | None:
-    """Obtiene el tenant_id del contexto thread-local actual."""
-    return getattr(_tenant_context, "tenant_id", None)
-
-
-def set_current_tenant_id(tenant_id: str | None) -> None:
-    """Establece el tenant_id en el contexto thread-local actual."""
-    _tenant_context.tenant_id = tenant_id
-
-
-def clear_tenant_context() -> None:
-    """Limpia el contexto de tenant del thread actual."""
-    _tenant_context.tenant_id = None
 
 
 # ── Tenant Service ────────────────────────────────────────────
@@ -117,7 +77,9 @@ class TenantService:
             self._initialized = True
             self._db = DatabaseManager()
             self._redis = RedisService()
-            self._tenant_connections: dict[str, sqlite3.Connection] = {}
+            self._provisioner = TenantStorageProvisioner()
+            self._connection_pool = TenantConnectionPool()
+            self._features = TenantFeatureManager()
             self._ensure_tables()
             logger.info("Tenant Service inicializado")
 
@@ -226,7 +188,7 @@ class TenantService:
 
         # Aprovisionar almacenamiento de datos
         db_type = plan_config["db_isolation"]
-        provision_result = self._provision_tenant_storage(tenant_id, slug, db_type)
+        provision_result = self._provisioner.provision(tenant_id, slug, db_type)
 
         if provision_result.get("status") != "ok":
             # Rollback: eliminar tenant si falla aprovisionamiento
@@ -234,13 +196,9 @@ class TenantService:
             self._db.commit()
             return provision_result
 
-        # Habilitar features del plan
-        for feature in plan_config["features"]:
-            self._db.execute(
-                "INSERT OR IGNORE INTO tenant_features (tenant_id, feature_name, enabled) VALUES (?, ?, 1)",
-                (tenant_id, feature),
-            )
-        self._db.commit()
+        # Habilitar features del plan usando TenantFeatureManager
+        for feature in plan_config.get("features", []):
+            self._features.set_feature(tenant_id, feature, True)
 
         # Cache en Redis
         self._cache_tenant(
@@ -289,9 +247,8 @@ class TenantService:
             return None
 
         tenant_data = self._tenant_row_to_dict(row)
-
-        # Cargar features y settings
-        tenant_data["features"] = self._get_tenant_features(tenant_id)
+        # Cargar features y settings usando los managers especializados
+        tenant_data["features"] = self._features.get_all_features(tenant_id)
         tenant_data["settings"] = self._get_tenant_settings(tenant_id)
 
         # Cache en Redis
@@ -392,7 +349,7 @@ class TenantService:
         params.append(tenant_id)
 
         self._db.execute(
-            f"UPDATE tenants SET {', '.join(set_parts)} WHERE id = ?",
+            "UPDATE tenants SET " + ", ".join(set_parts) + " WHERE id = ?",
             tuple(params),
         )
         self._db.commit()
@@ -463,7 +420,7 @@ class TenantService:
         )
         if db_info:
             try:
-                self._deprovision_tenant_storage(tenant_id, db_info["db_type"], db_info["connection_string"])
+                self._provisioner.deprovision(tenant_id, db_info["db_type"], db_info["connection_string"])
             except Exception as e:
                 logger.error(f"Tenant: Error eliminando almacenamiento de tenant {tenant_id}: {e}")
 
@@ -480,10 +437,7 @@ class TenantService:
             self._redis.delete(f"tenant:slug:{slug}")
 
         # 6. Cerrar conexion del tenant si existe
-        if tenant_id in self._tenant_connections:
-            with contextlib.suppress(Exception):
-                self._tenant_connections[tenant_id].close()
-            del self._tenant_connections[tenant_id]
+        self._connection_pool.close(tenant_id)
 
         self._db.audit("tenant.deleted", f"Tenant '{tenant.get('name', tenant_id)}' eliminado")
         logger.info(f"Tenant: '{tenant.get('name', tenant_id)}' eliminado completamente")
@@ -530,243 +484,24 @@ class TenantService:
         return {"status": "ok", "tenant_id": tenant_id, "new_status": status}
 
     # ── Aislamiento de BD ─────────────────────────────────
+    # NOTA: La logica de aprovisionamiento y conexiones se ha movido a:
+    #   src/tenant/storage.py — TenantStorageProvisioner, TenantConnectionPool
+    #
+    # Metodos extraidos:
+    #   _provision_tenant_storage → self._provisioner.provision()
+    #   _deprovision_tenant_storage → self._provisioner.deprovision()
+    #   get_tenant_db → self._connection_pool.get_connection()
 
-    def _provision_tenant_storage(self, tenant_id: str, slug: str, db_type: str) -> dict:
-        """Aprovisiona el almacenamiento de datos para un tenant.
-
-        Args:
-            tenant_id: ID del tenant
-            slug: Slug del tenant (para nombres de schema/BD)
-            db_type: Tipo de aislamiento ('schema' o 'database')
-
-        Returns:
-            dict con status y connection_string
-        """
-        if db_type == "schema":
-            return self._provision_schema(tenant_id, slug)
-        elif db_type == "database":
-            return self._provision_database(tenant_id, slug)
-        else:
-            return {"status": "error", "message": f"Tipo de aislamiento invalido: {db_type}"}
-
-    def _provision_schema(self, tenant_id: str, slug: str) -> dict:
-        """Aprovisiona un schema separado en la BD compartida para un tenant."""
-        # En SQLite no hay schemas, usamos prefijo en tablas
-        # Para PostgreSQL, se crearia un schema real
-        conn = self._db.get_connection()
-        cursor = conn.cursor()
-
-        # Crear tablas con prefijo del tenant
-        prefix = f"t_{slug.replace('-', '_')}_"
-        cursor.executescript(f"""
-            CREATE TABLE IF NOT EXISTS {prefix}workflow_definitions (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                name            TEXT NOT NULL,
-                description     TEXT,
-                trigger_type    TEXT NOT NULL,
-                trigger_config  TEXT NOT NULL,
-                steps           TEXT NOT NULL,
-                status          TEXT DEFAULT 'active',
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_id         INTEGER
-            );
-
-            CREATE TABLE IF NOT EXISTS {prefix}workflow_executions (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                workflow_id     INTEGER NOT NULL,
-                status          TEXT NOT NULL,
-                trigger_data    TEXT,
-                started_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at    TIMESTAMP,
-                duration_ms     INTEGER,
-                error_message   TEXT,
-                user_id         INTEGER
-            );
-
-            CREATE TABLE IF NOT EXISTS {prefix}users (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                username        TEXT UNIQUE NOT NULL,
-                password_hash   TEXT NOT NULL,
-                role            TEXT DEFAULT 'admin',
-                display_name    TEXT,
-                email           TEXT,
-                is_active       INTEGER DEFAULT 1,
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login_at   TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS {prefix}settings (
-                key             TEXT PRIMARY KEY,
-                value           TEXT NOT NULL
-            );
-        """)
-        conn.commit()
-
-        # Registrar en tenant_databases
-        connection_string = f"sqlite:shared:{prefix}"
-        self._db.execute(
-            "INSERT INTO tenant_databases (tenant_id, db_type, connection_string) VALUES (?, 'schema', ?)",
-            (tenant_id, connection_string),
-        )
-        self._db.commit()
-
-        logger.info(f"Tenant: Schema aprovisionado para {tenant_id} (prefix={prefix})")
-        return {"status": "ok", "db_type": "schema", "connection_string": connection_string}
-
-    def _provision_database(self, tenant_id: str, slug: str) -> dict:
-        """Aprovisiona una BD dedicada para un tenant (enterprise).
-
-        En SQLite, crea un archivo .db separado. En PostgreSQL,
-        crearia una BD dedicada.
-        """
-        from src.config import DATA_DIR
-
-        db_path = DATA_DIR / "tenants" / f"{slug}.db"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Crear BD del tenant con esquema completo
-        tenant_conn = sqlite3.connect(str(db_path))
-        tenant_conn.execute("PRAGMA journal_mode=WAL")
-        tenant_conn.execute("PRAGMA foreign_keys=ON")
-        tenant_conn.executescript("""
-            CREATE TABLE IF NOT EXISTS workflow_definitions (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                name            TEXT NOT NULL,
-                description     TEXT,
-                trigger_type    TEXT NOT NULL,
-                trigger_config  TEXT NOT NULL,
-                steps           TEXT NOT NULL,
-                status          TEXT DEFAULT 'active',
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_id         INTEGER
-            );
-
-            CREATE TABLE IF NOT EXISTS workflow_executions (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                workflow_id     INTEGER NOT NULL,
-                status          TEXT NOT NULL,
-                trigger_data    TEXT,
-                started_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at    TIMESTAMP,
-                duration_ms     INTEGER,
-                error_message   TEXT,
-                user_id         INTEGER
-            );
-
-            CREATE TABLE IF NOT EXISTS workflow_step_logs (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                execution_id    INTEGER NOT NULL,
-                step_id         INTEGER NOT NULL,
-                tool            TEXT NOT NULL,
-                action          TEXT NOT NULL,
-                input_data      TEXT,
-                output_data     TEXT,
-                status          TEXT NOT NULL,
-                started_at      TIMESTAMP,
-                completed_at    TIMESTAMP,
-                duration_ms     INTEGER,
-                error_message   TEXT,
-                retry_count     INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS users (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                username        TEXT UNIQUE NOT NULL,
-                password_hash   TEXT NOT NULL,
-                role            TEXT DEFAULT 'admin',
-                display_name    TEXT,
-                email           TEXT,
-                is_active       INTEGER DEFAULT 1,
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login_at   TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS settings (
-                key             TEXT PRIMARY KEY,
-                value           TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS leads (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                name            TEXT NOT NULL,
-                email           TEXT,
-                phone           TEXT,
-                company         TEXT,
-                stage           TEXT DEFAULT 'new',
-                source          TEXT,
-                notes           TEXT,
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_id         INTEGER
-            );
-
-            CREATE TABLE IF NOT EXISTS products (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                sku             TEXT UNIQUE,
-                name            TEXT NOT NULL,
-                description     TEXT,
-                category        TEXT,
-                stock           INTEGER DEFAULT 0,
-                min_stock       INTEGER DEFAULT 10,
-                price           REAL,
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        tenant_conn.commit()
-        tenant_conn.close()
-
-        connection_string = f"sqlite:{db_path}"
-        self._db.execute(
-            "INSERT INTO tenant_databases (tenant_id, db_type, connection_string) VALUES (?, 'database', ?)",
-            (tenant_id, connection_string),
-        )
-        self._db.commit()
-
-        logger.info(f"Tenant: BD dedicada aprovisionada para {tenant_id} (path={db_path})")
-        return {"status": "ok", "db_type": "database", "connection_string": connection_string}
-
-    def _deprovision_tenant_storage(self, tenant_id: str, db_type: str, connection_string: str) -> None:
-        """Elimina el almacenamiento de datos de un tenant."""
-        if db_type == "schema":
-            # En schema mode: eliminar tablas con prefijo
-            # Parsear prefijo del connection_string
-            parts = connection_string.split(":")
-            if len(parts) >= 3:
-                prefix = parts[2]
-                conn = self._db.get_connection()
-                cursor = conn.cursor()
-                # Obtener todas las tablas con el prefijo
-                tables = self._db.fetchall(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ?",
-                    (f"{prefix}%",),
-                )
-                for table in tables:
-                    cursor.execute(f"DROP TABLE IF EXISTS [{table['name']}]")
-                conn.commit()
-                logger.info(f"Tenant: Tablas con prefijo '{prefix}' eliminadas")
-        elif db_type == "database":
-            # En database mode: eliminar archivo .db
-            parts = connection_string.split(":", 1)
-            if len(parts) >= 2 and parts[0] == "sqlite":
-                db_path = Path(parts[1])
-                if db_path.exists():
-                    db_path.unlink()
-                    logger.info(f"Tenant: BD eliminada: {db_path}")
-
-    def get_tenant_db(self, tenant_id: str) -> sqlite3.Connection | None:
+    def get_tenant_db(self, tenant_id: str) -> Any | None:
         """Obtiene la conexion a la BD del tenant.
 
-        Para tenants con BD dedicada, retorna una conexion al archivo .db.
-        Para tenants con schema, retorna la conexion compartida con prefijo.
+        Delega en TenantConnectionPool para gestion de conexiones.
 
         Args:
             tenant_id: ID del tenant
 
         Returns:
-            sqlite3.Connection o None si el tenant no existe
+            Conexion a BD, o None si el tenant no existe o no esta activo
         """
         tenant = self.get_tenant(tenant_id)
         if not tenant or tenant.get("status") != "active":
@@ -779,117 +514,35 @@ class TenantService:
         if not db_info:
             return None
 
-        # Reutilizar conexion existente si esta disponible
-        if tenant_id in self._tenant_connections:
-            try:
-                conn = self._tenant_connections[tenant_id]
-                conn.execute("SELECT 1")
-                return conn
-            except Exception:
-                del self._tenant_connections[tenant_id]
+        return self._connection_pool.get_connection(
+            tenant_id, db_info["db_type"], db_info["connection_string"]
+        )
 
-        if db_info["db_type"] == "database":
-            parts = db_info["connection_string"].split(":", 1)
-            if len(parts) >= 2 and parts[0] == "sqlite":
-                db_path = Path(parts[1])
-                if db_path.exists():
-                    conn = sqlite3.connect(str(db_path))
-                    conn.row_factory = sqlite3.Row
-                    conn.execute("PRAGMA journal_mode=WAL")
-                    conn.execute("PRAGMA foreign_keys=ON")
-                    self._tenant_connections[tenant_id] = conn
-                    return conn
-
-        # Para schema, retornar la conexion compartida
-        return self._db.get_connection()
-
-    def migrate_tenant_schema(self, tenant_id: str, migration_sql: str) -> dict:
-        """Ejecuta una migracion de schema en la BD del tenant.
-
-        Args:
-            tenant_id: ID del tenant
-            migration_sql: SQL de migracion a ejecutar
-
-        Returns:
-            dict con status
-        """
-        conn = self.get_tenant_db(tenant_id)
-        if not conn:
-            return {"status": "error", "message": f"No se pudo obtener conexion para tenant {tenant_id}"}
-
-        try:
-            conn.executescript(migration_sql)
-            conn.commit()
-            logger.info(f"Tenant: Migracion ejecutada para tenant {tenant_id}")
-            return {"status": "ok"}
-        except Exception as e:
-            logger.error(f"Tenant: Error en migracion para tenant {tenant_id}: {e}")
-            return {"status": "error", "message": str(e)}
-
-    # ── Feature flags ─────────────────────────────────────
+    # NOTA: Metodos de feature flags movidos a src/tenant/features.py
+    #   - set_feature() → self._features.set_feature()
+    #   - check_feature() → self._features.check_feature()
+    #   - _get_tenant_features() → self._features.get_all_features()
 
     def set_feature(self, tenant_id: str, feature: str, enabled: bool) -> dict:
-        """Habilita o deshabilita una feature para un tenant.
-
-        Args:
-            tenant_id: ID del tenant
-            feature: Nombre de la feature
-            enabled: True para habilitar, False para deshabilitar
-
-        Returns:
-            dict con status
         """
-        existing = self._db.fetchone("SELECT id FROM tenants WHERE id = ?", (tenant_id,))
-        if not existing:
-            return {"status": "error", "message": f"Tenant {tenant_id} no encontrado"}
-
-        self._db.execute(
-            "INSERT OR REPLACE INTO tenant_features (tenant_id, feature_name, enabled) VALUES (?, ?, ?)",
-            (tenant_id, feature, 1 if enabled else 0),
-        )
-        self._db.commit()
-
-        # Invalidar cache
-        self._redis.delete(f"tenant:{tenant_id}")
-
-        logger.info(f"Tenant: Feature '{feature}' {'habilitada' if enabled else 'deshabilitada'} para {tenant_id}")
-        return {"status": "ok", "feature": feature, "enabled": enabled}
+        Habilita o deshabilita una feature para un tenant.
+        Delega en TenantFeatureManager.
+        """
+        return self._features.set_feature(tenant_id, feature, enabled)
 
     def check_feature(self, tenant_id: str, feature: str) -> bool:
-        """Verifica si una feature esta habilitada para un tenant.
-
-        Si el tenant tiene feature 'all' habilitada (plan enterprise),
-        retorna True para cualquier feature.
-
-        Args:
-            tenant_id: ID del tenant
-            feature: Nombre de la feature
-
-        Returns:
-            True si la feature esta habilitada
         """
-        # Verificar si tiene 'all' (enterprise)
-        all_row = self._db.fetchone(
-            "SELECT enabled FROM tenant_features WHERE tenant_id = ? AND feature_name = 'all'",
-            (tenant_id,),
-        )
-        if all_row and all_row["enabled"]:
-            return True
+        Verifica si una feature esta habilitada para un tenant.
+        Delega en TenantFeatureManager.
+        """
+        return self._features.check_feature(tenant_id, feature)
 
-        # Verificar feature especifica
-        row = self._db.fetchone(
-            "SELECT enabled FROM tenant_features WHERE tenant_id = ? AND feature_name = ?",
-            (tenant_id, feature),
-        )
-        return bool(row and row["enabled"])
-
-    def _get_tenant_features(self, tenant_id: str) -> dict[str, bool]:
-        """Obtiene todas las features de un tenant como dict."""
-        rows = self._db.fetchall(
-            "SELECT feature_name, enabled FROM tenant_features WHERE tenant_id = ?",
-            (tenant_id,),
-        )
-        return {row["feature_name"]: bool(row["enabled"]) for row in rows}
+    def get_features(self, tenant_id: str) -> dict[str, bool]:
+        """
+        Obtiene todas las features de un tenant.
+        Delega en TenantFeatureManager.
+        """
+        return self._features.get_all_features(tenant_id)
 
     # ── Settings por tenant ───────────────────────────────
 
@@ -910,7 +563,8 @@ class TenantService:
         return row["value"] if row else None
 
     def set_setting(self, tenant_id: str, key: str, value: str) -> dict:
-        """Establece un setting para un tenant.
+        """
+        Establece un setting para un tenant.
 
         Args:
             tenant_id: ID del tenant
@@ -996,79 +650,9 @@ class TenantService:
             self._redis.delete(f"tenant:slug:{tenant['slug']}")
 
     def close_all_tenant_connections(self) -> None:
-        """Cierra todas las conexiones de BD de tenants."""
-        for _tenant_id, conn in self._tenant_connections.items():
-            with contextlib.suppress(Exception):
-                conn.close()
-        self._tenant_connections.clear()
+        """Cierra todas las conexiones de BD de tenants.
+
+        Delega en TenantConnectionPool.
+        """
+        self._connection_pool.close_all()
         logger.info("Tenant: Todas las conexiones de tenant cerradas")
-
-
-# ── Flask Middleware ──────────────────────────────────────────
-
-
-class TenantMiddleware:
-    """Middleware Flask que resuelve el tenant antes de cada request.
-
-    Inyecta g.tenant_id para uso downstream y retorna 404 para
-    dominios de tenant desconocidos.
-    """
-
-    def __init__(self, app: Any = None) -> None:
-        self._tenant_service = TenantService()
-        if app is not None:
-            self.init_app(app)
-
-    def init_app(self, app: Any) -> None:
-        """Registra el middleware en la aplicacion Flask."""
-        app.before_request(self._before_request)
-        app.after_request(self._after_request)
-        logger.info("TenantMiddleware registrado en la aplicacion Flask")
-
-    def _before_request(self) -> Any | None:
-        """Resuelve el tenant antes de cada request."""
-        from flask import g, request
-
-        # Skip para rutas de admin o health check
-        if request.path.startswith("/api/v1/admin/") or request.path == "/health":
-            return None
-
-        # Skip para rutas de login/auth (no requieren tenant)
-        if request.path.startswith("/api/auth/") or request.path.startswith("/api/v1/auth/"):
-            return None
-
-        # Skip para rutas de login page
-        if request.path in ("/login", "/static") or request.path.startswith("/static/"):
-            return None
-
-        tenant = self._tenant_service.resolve_tenant(request)
-
-        if tenant:
-            g.tenant_id = tenant["id"]
-            g.tenant = tenant
-            set_current_tenant_id(tenant["id"])
-
-            # Almacenar en sesion para requests futuros
-            try:
-                from flask import session
-
-                session["tenant_id"] = tenant["id"]
-            except RuntimeError:
-                pass
-        else:
-            # Si no se puede resolver el tenant y no es una ruta publica,
-            # retornar 404 solo para rutas que requieren tenant
-            if request.path.startswith("/api/"):
-                from flask import jsonify
-
-                return jsonify({"error": "Tenant no encontrado", "code": "TENANT_NOT_FOUND"}), 404
-            # Para paginas web, continuar sin tenant (multi-tenant global)
-            g.tenant_id = None
-            g.tenant = None
-
-        return None
-
-    def _after_request(self, response: Any) -> Any:
-        """Limpia el contexto de tenant despues de cada request."""
-        clear_tenant_context()
-        return response

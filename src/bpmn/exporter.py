@@ -13,7 +13,7 @@ from src.bpmn.models import BPMN_NS, BPMNDI_NS, DC_NS, DI_NS, BPMNProcess
 class BPMNExporter:
     """Export BPMNProcess objects to BPMN 2.0 XML format."""
 
-    def export(self, process: BPMNProcess, pretty: bool = True) -> str:
+    def export(self, process: BPMNProcess) -> str:
         """Export a BPMNProcess to BPMN 2.0 XML."""
         root = ET.Element("bpmn:definitions")
         root.set("xmlns:bpmn", BPMN_NS)

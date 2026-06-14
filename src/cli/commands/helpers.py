@@ -5,6 +5,7 @@ Zenic CLI — Helpers compartidos entre comandos
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import inspect
 import json
 import os
@@ -23,6 +24,35 @@ logger = setup_logging(__name__)
 CONNECTORS_BASE_DIR = "src/connectors"
 REQUIRED_CONNECTOR_FILES = ["__init__.py", "connector.py", "schema.py"]
 REQUIRED_ABSTRACT_METHODS = ["connect", "execute", "validate", "disconnect"]
+
+# ── Whitelist de conectores permitidos ─────────────────────────────
+
+ALLOWED_CONNECTORS = {
+    "airtable", "anthropic", "asana", "aws_s3", "azure_ad", "azure_blob",
+    "confluence", "datadog", "deepseek", "discord", "dropbox", "dte_chile",
+    "elastic", "freshdesk", "gcs", "github", "gitlab", "grafana", "hubspot",
+    "huggingface", "intercom", "jira", "mailchimp", "mailgun", "marketo",
+    "mercadolibre", "monday", "mongo_connector", "mysql_connector", "new_relic",
+    "nfe", "notion", "okta", "openai_v2", "pagerduty", "paypal", "pipedrive",
+    "pix_brazil", "quickbooks", "ruv", "salesforce", "sat_mexico", "sendgrid",
+    "sentry", "shopify", "splunk", "square", "sumologic", "teams", "totvs",
+    "trello", "twilio", "typeform", "vault", "whatsapp", "wise", "woocommerce",
+    "xero", "zendesk", "zoho_crm",
+}
+
+# Conectores permitidos por defecto (si whitelist está vacía)
+DEFAULT_ALLOWED_CONNECTORS = {
+    "airtable", "anthropic", "asana", "aws_s3", "azure_ad", "azure_blob",
+    "confluence", "datadog", "deepseek", "discord", "dropbox", "dte_chile",
+    "elastic", "freshdesk", "gcs", "github", "gitlab", "grafana", "hubspot",
+    "huggingface", "intercom", "jira", "mailchimp", "mailgun", "marketo",
+    "mercadolibre", "monday", "mongo_connector", "mysql_connector", "new_relic",
+    "nfe", "notion", "okta", "openai_v2", "pagerduty", "paypal", "pipedrive",
+    "pix_brazil", "quickbooks", "ruv", "salesforce", "sat_mexico", "sendgrid",
+    "sentry", "shopify", "splunk", "square", "sumologic", "teams", "totvs",
+    "trello", "twilio", "typeform", "vault", "whatsapp", "wise", "woocommerce",
+    "xero", "zendesk", "zoho_crm",
+}
 
 
 # ── Parseo de entrada ──────────────────────────────────────────
@@ -85,6 +115,18 @@ def _load_connector(connector_path: Path) -> Any | None:
 def _import_connector_module(connector_path: Path) -> Any | None:
     """Importa dinamicamente el modulo connector.py desde la ruta dada."""
     connector_name = connector_path.name
+
+    # Validar contra whitelist de conectores permitidos
+    allowed_connectors = os.environ.get("ZENIC_ALLOWED_CONNECTORS")
+    if allowed_connectors:
+        allowed_set = {c.strip() for c in allowed_connectors.split(",")}
+    else:
+        allowed_set = DEFAULT_ALLOWED_CONNECTORS
+
+    if connector_name not in allowed_set:
+        logger.error(f"Conector no permitido: '{connector_name}'. No está en la whitelist.")
+        return None
+
     parent_dir = str(connector_path.parent)
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)
@@ -112,6 +154,18 @@ def _import_connector_module(connector_path: Path) -> Any | None:
 def _import_schema_module(connector_path: Path) -> Any | None:
     """Importa dinamicamente el modulo schema.py desde la ruta dada."""
     connector_name = connector_path.name
+
+    # Validar contra whitelist de conectores permitidos (mismo check que en _import_connector_module)
+    allowed_connectors = os.environ.get("ZENIC_ALLOWED_CONNECTORS")
+    if allowed_connectors:
+        allowed_set = {c.strip() for c in allowed_connectors.split(",")}
+    else:
+        allowed_set = DEFAULT_ALLOWED_CONNECTORS
+
+    if connector_name not in allowed_set:
+        logger.error(f"Conector no permitido: '{connector_name}'. No está en la whitelist.")
+        return None
+
     parent_dir = str(connector_path.parent)
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)

@@ -3,7 +3,7 @@ Marketplace — Repositorio de Almacenamiento de Conectores
 ==========================================================
 
 Gestiona la persistencia de conectores, categorias, instalaciones
-y resenas en la base de datos SQLite usando DatabaseManager.
+y resenas en la base de datos marketplace.db (MarketplaceDBManager).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from src.data.database_manager import DatabaseManager
+from src.data.marketplace_db import MarketplaceDBManager
 from src.utils.logger import setup_logging
 
 logger = setup_logging(__name__)
@@ -21,99 +21,13 @@ logger = setup_logging(__name__)
 
 class ConnectorRepository:
     """
-    Repositorio de almacenamiento para conectores del marketplace.
-
-    Usa DatabaseManager para persistir conectores, categorias,
-    instalaciones y resenas. Implementa CRUD con versionado,
-    seguimiento de instalaciones y almacenamiento de resenas.
+    Repositorio de almacenamiento para conectores del marketplace.    marketplace dedicada, separada de la base de datos principal.
     """
 
     def __init__(self) -> None:
-        """Inicializa el repositorio y crea las tablas si no existen."""
-        self._db = DatabaseManager()
-        self._ensure_tables()
-
-    def _ensure_tables(self) -> None:
-        """Crea las tablas del marketplace si no existen."""
-        conn = self._db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.executescript("""
-            CREATE TABLE IF NOT EXISTS marketplace_connectors (
-                id TEXT PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL,
-                display_name TEXT DEFAULT '',
-                description TEXT DEFAULT '',
-                category TEXT DEFAULT 'general',
-                icon TEXT DEFAULT 'plug',
-                author TEXT DEFAULT '',
-                homepage TEXT DEFAULT '',
-                docs_url TEXT DEFAULT '',
-                status TEXT DEFAULT 'draft',
-                certification_status TEXT DEFAULT 'pending',
-                current_version TEXT DEFAULT '1.0.0',
-                versions TEXT DEFAULT '[]',
-                tags TEXT DEFAULT '[]',
-                actions TEXT DEFAULT '[]',
-                auth_types TEXT DEFAULT '[]',
-                installs INTEGER DEFAULT 0,
-                rating REAL DEFAULT 0.0,
-                review_count INTEGER DEFAULT 0,
-                featured INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_mkt_conn_name ON marketplace_connectors(name);
-            CREATE INDEX IF NOT EXISTS idx_mkt_conn_category ON marketplace_connectors(category);
-            CREATE INDEX IF NOT EXISTS idx_mkt_conn_status ON marketplace_connectors(status);
-            CREATE INDEX IF NOT EXISTS idx_mkt_conn_cert ON marketplace_connectors(certification_status);
-
-            CREATE TABLE IF NOT EXISTS marketplace_categories (
-                id TEXT PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL,
-                display_name TEXT DEFAULT '',
-                description TEXT DEFAULT '',
-                icon TEXT DEFAULT 'folder',
-                parent_category TEXT,
-                connector_count INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS marketplace_installations (
-                id TEXT PRIMARY KEY,
-                connector_name TEXT NOT NULL,
-                tenant_id TEXT NOT NULL,
-                version TEXT DEFAULT '1.0.0',
-                status TEXT DEFAULT 'active',
-                config TEXT DEFAULT '{}',
-                installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                uninstalled_at TIMESTAMP,
-                UNIQUE(connector_name, tenant_id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_mkt_inst_connector ON marketplace_installations(connector_name);
-            CREATE INDEX IF NOT EXISTS idx_mkt_inst_tenant ON marketplace_installations(tenant_id);
-            CREATE INDEX IF NOT EXISTS idx_mkt_inst_status ON marketplace_installations(status);
-
-            CREATE TABLE IF NOT EXISTS marketplace_reviews (
-                id TEXT PRIMARY KEY,
-                connector_name TEXT NOT NULL,
-                tenant_id TEXT NOT NULL,
-                rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
-                title TEXT DEFAULT '',
-                comment TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_mkt_rev_connector ON marketplace_reviews(connector_name);
-            CREATE INDEX IF NOT EXISTS idx_mkt_rev_tenant ON marketplace_reviews(tenant_id);
-        """)
-
-        conn.commit()
-        logger.info("ConnectorRepository: tablas del marketplace verificadas")
+        """Inicializa el repositorio con su propia base de datos marketplace.db."""
+        self._db = MarketplaceDBManager()
+        logger.info("ConnectorRepository: inicializado con marketplace.db propio")
 
     # ── Conectores CRUD ───────────────────────────────────────
 
@@ -207,7 +121,7 @@ class ConnectorRepository:
         params.append(name)
 
         self._db.execute(
-            f"UPDATE marketplace_connectors SET {', '.join(set_parts)} WHERE name = ?",
+            "UPDATE marketplace_connectors SET " + ", ".join(set_parts) + " WHERE name = ?",
             tuple(params),
         )
         self._db.commit()

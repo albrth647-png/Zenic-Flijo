@@ -11,6 +11,7 @@ este disponible, o pymysql como driver directo.
 from __future__ import annotations
 
 import contextlib
+import re
 from typing import Any
 
 from src.sdk.base import BaseConnector
@@ -288,11 +289,15 @@ class MysqlConnectorConnector(BaseConnector):
             return {"success": False, "error": "Parametro requerido: table_name"}
         self._log_operation("describe_table", f"table={table_name}")
 
-        query = f"DESCRIBE {table_name}"
-        if self._use_http:
-            return self._execute_query_http(query)
+        # Validar nombre de tabla para prevenir SQL injection
+        if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
+            return {"success": False, "error": f"Nombre de tabla invalido: {table_name}"}
 
-        result = self._execute_query_driver(query)
+        query = "DESCRIBE ?"
+        if self._use_http:
+            return self._execute_query_http(query, [table_name])
+
+        result = self._execute_query_driver(query, [table_name])
         if result["success"]:
             return {
                 "success": True,
@@ -312,6 +317,15 @@ class MysqlConnectorConnector(BaseConnector):
         if not table_name or not data:
             return {"success": False, "error": "Parametros requeridos: table_name, data"}
         self._log_operation("insert_row", f"table={table_name}")
+
+        # Validar nombre de tabla para prevenir SQL injection
+        if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
+            return {"success": False, "error": f"Nombre de tabla invalido: {table_name}"}
+
+        # Validar nombres de columnas
+        for col in data:
+            if not re.match(r'^[a-zA-Z0-9_]+$', col):
+                return {"success": False, "error": f"Nombre de columna invalido: {col}"}
 
         columns = ", ".join(data.keys())
         placeholders = ", ".join(["%s"] * len(data))
@@ -351,16 +365,30 @@ class MysqlConnectorConnector(BaseConnector):
             return {"success": False, "error": "Parametros requeridos: table_name, columns"}
         self._log_operation("create_table", f"table={table_name}")
 
+        # Validar nombre de tabla para prevenir SQL injection
+        if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
+            return {"success": False, "error": f"Nombre de tabla invalido: {table_name}"}
+
         # columns can be a list of column definition strings or dicts
         if isinstance(columns, list):
             col_defs = []
             for col in columns:
                 if isinstance(col, str):
+                    # Validar definiciones de columnas string
+                    if not re.match(r'^[a-zA-Z0-9_\s,()]+$', col):
+                        return {"success": False, "error": f"Definicion de columna invalida: {col}"}
                     col_defs.append(col)
                 elif isinstance(col, dict):
                     name = col.get("name", "")
                     col_type = col.get("type", "TEXT")
                     constraints = col.get("constraints", "")
+                    # Validar nombre de columna
+                    if not re.match(r'^[a-zA-Z0-9_]+$', name):
+                        return {"success": False, "error": f"Nombre de columna invalido: {name}"}
+                    # Validar tipo de dato (lista blanca de tipos MySQL comunes)
+                    allowed_types = {"INT", "VARCHAR", "TEXT", "DATETIME", "TIMESTAMP", "DECIMAL", "FLOAT", "DOUBLE", "BOOLEAN", "CHAR", "BLOB", "JSON"}
+                    if col_type.upper() not in allowed_types:
+                        return {"success": False, "error": f"Tipo de dato no permitido: {col_type}"}
                     definition = f"{name} {col_type}"
                     if constraints:
                         definition += f" {constraints}"

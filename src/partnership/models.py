@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -42,7 +42,6 @@ class PartnerActivityType(StrEnum):
     """Types of partner activities tracked for compliance."""
     CONNECTOR_PUBLISHED = "connector_published"
     CONNECTOR_INSTALLED = "connector_installed"
-    RESELLER_SALE = "reseller_sale"
     REFERRAL = "referral"
     TICKET_CREATED = "ticket_created"
     TICKET_RESOLVED = "ticket_resolved"

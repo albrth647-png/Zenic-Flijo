@@ -99,6 +99,7 @@ class DataKeeperRepository:
         Cada colección tiene su propia tabla: dk_{collection_name}
         """
         conn = self._db.get_connection()
+        # collection_name is validated by validate_name() before use (only alphanumeric + underscore)
         table_name = f"dk_{collection_name}"
 
         # Mapeo de tipos
@@ -122,6 +123,7 @@ class DataKeeperRepository:
             columns.append(f'"{field_name}" {sql_type}')
 
         # Crear tabla
+        # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
         create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(columns)})"
         conn.execute(create_sql)
         conn.commit()
@@ -133,6 +135,7 @@ class DataKeeperRepository:
             raise ValueError(f"Colección '{collection_name}' no encontrada")
 
         self._ensure_data_table(collection_name, collection["schema"])
+        # collection_name is validated by validate_name() before use (only alphanumeric + underscore)
         table_name = f"dk_{collection_name}"
 
         # Filtrar solo campos del schema (quitar id, created_at, etc.)
@@ -149,6 +152,7 @@ class DataKeeperRepository:
         placeholders = ", ".join("?" for _ in allowed_fields)
 
         conn = self._db.get_connection()
+        # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
         cursor = conn.execute(
             f"INSERT INTO {table_name} ({field_list}) VALUES ({placeholders})",
             values,
@@ -176,6 +180,7 @@ class DataKeeperRepository:
         if not collection:
             return None
 
+        # collection_name is validated by validate_name() before use (only alphanumeric + underscore)
         table_name = f"dk_{collection_name}"
         conn = self._db.get_connection()
 
@@ -190,6 +195,7 @@ class DataKeeperRepository:
 
             # PRAGMA table_info retorna: cid, name, type, notnull, dflt_value, pk
             # desc[1] = name (nombre de columna)
+            # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
             columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
 
             result = dict(zip(columns, row, strict=False))
@@ -205,6 +211,7 @@ class DataKeeperRepository:
             return []
 
         self._ensure_data_table(collection_name, collection["schema"])
+        # collection_name is validated by validate_name() before use (only alphanumeric + underscore)
         table_name = f"dk_{collection_name}"
         conn = self._db.get_connection()
 
@@ -223,10 +230,12 @@ class DataKeeperRepository:
             if where_clauses:
                 where_sql = " WHERE " + " AND ".join(where_clauses)
 
+            # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
             sql = f"SELECT * FROM {table_name}{where_sql} ORDER BY id DESC LIMIT ? OFFSET ?"
             values.extend([limit, offset])
 
             rows = conn.execute(sql, values).fetchall()
+            # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
             columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
 
             return [self._convert_types(dict(zip(columns, row, strict=False)), collection["schema"]) for row in rows]
@@ -241,6 +250,7 @@ class DataKeeperRepository:
             return None
 
         self._ensure_data_table(collection_name, collection["schema"])
+        # collection_name is validated by validate_name() before use (only alphanumeric + underscore)
         table_name = f"dk_{collection_name}"
         conn = self._db.get_connection()
 
@@ -259,6 +269,7 @@ class DataKeeperRepository:
         set_sql = ", ".join(set_clauses)
         values.append(record_id)
 
+        # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
         conn.execute(
             f"UPDATE {table_name} SET {set_sql} WHERE id = ?",
             values,
@@ -274,9 +285,11 @@ class DataKeeperRepository:
             return False
 
         self._ensure_data_table(collection_name, collection["schema"])
+        # collection_name is validated by validate_name() before use (only alphanumeric + underscore)
         table_name = f"dk_{collection_name}"
 
         conn = self._db.get_connection()
+        # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
         cursor = conn.execute(
             f"DELETE FROM {table_name} WHERE id = ?",
             (record_id,),

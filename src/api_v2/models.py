@@ -671,3 +671,92 @@ class WorkflowEvent(BaseModel):
     status: str = Field(default="pending", description="Estado del evento")
     created_at: str | None = None
     processed_at: str | None = None
+
+
+# ── Flask Common Response Models ───────────────────────────────
+# Modelos compartidos con la SPA Flask. Unifican el formato de
+# respuesta entre Flask blueprints y FastAPI routers.
+
+
+class LoginResponse(BaseModel):
+    """Respuesta de login para Flask SPA."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "ok", "user": "admin", "role": "admin"}})
+
+    status: str = Field(description="Estado de la operacion")
+    user: str = Field(default="", description="Nombre de usuario")
+    role: str = Field(default="admin", description="Rol del usuario")
+    id: int | None = Field(default=None, description="ID del usuario")
+
+
+class StatusResponse(BaseModel):
+    """Respuesta simple de estado."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "ok"}})
+
+    status: str = Field(description="Estado de la operacion")
+    message: str = Field(default="", description="Mensaje opcional")
+
+
+class StatusDeletedResponse(BaseModel):
+    """Respuesta de eliminacion."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "deleted"}})
+
+    status: str = Field(default="deleted", description="Estado: deleted")
+
+
+class StatusUpdatedResponse(BaseModel):
+    """Respuesta de actualizacion."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "updated"}})
+
+    status: str = Field(default="updated", description="Estado: updated")
+
+
+class UserResponse(BaseModel):
+    """Respuesta con datos de usuario para Flask SPA."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    role: str = "editor"
+    display_name: str = ""
+    email: str = ""
+    is_active: int = 1
+    created_at: str | None = None
+
+
+class DashboardStatsResponse(BaseModel):
+    """Respuesta de estadisticas del dashboard."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    stats: dict[str, Any] = Field(default_factory=dict, description="Estadisticas del sistema")
+    trial: dict[str, Any] = Field(default_factory=dict, description="Estado del trial")
+
+
+class AuthStatusResponse(BaseModel):
+    """Respuesta de estado de autenticacion."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"authenticated": False}})
+
+    authenticated: bool = Field(description="Si el usuario esta autenticado")
+    username: str | None = Field(default=None, description="Nombre de usuario (si autenticado)")
+    role: str | None = Field(default=None, description="Rol del usuario (si autenticado)")
+
+
+class LicenseInfoResponse(BaseModel):
+    """Respuesta de informacion de licencia."""
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    type: str = "free"
+    is_free: bool = True
+    is_trial: bool = False
+    max_workflows: int = 5
+    allowed_tools: list[str] = Field(default_factory=list)
+    valid: bool = False
+    expires_at: str | None = None
+    client_name: str | None = None

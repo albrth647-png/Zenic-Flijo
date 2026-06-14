@@ -260,6 +260,26 @@ class ConnectorRegistry:
             discovered = ConnectorRegistry.auto_discover("src.connectors")
             print(f"Descubiertos: {discovered}")
         """
+        # Whitelist de paquetes permitidos para auto-descubrimiento
+        ALLOWED_PACKAGES = {
+            "src.connectors",
+            "src.tools",
+            "src.tools.integrations",
+            "src.tools.crm",
+            "src.tools.inventory",
+            "src.tools.invoice",
+            "src.tools.notification",
+            "src.tools.autopilot",
+            "src.tools.code_runner",
+            "src.tools.data_keeper",
+            "src.tools.logic_gate",
+            "src.tools.crm.repository",
+        }
+
+        if package_path not in ALLOWED_PACKAGES:
+            logger.error(f"ConnectorRegistry: paquete '{package_path}' no esta en la whitelist de auto-descubrimiento")
+            return []
+
         discovered: list[str] = []
 
         try:

@@ -46,7 +46,7 @@ export function SettingsLicenseTab() {
     } else {
       toast({
         title: "Licencia inválida",
-        description: res?.error || "La clave que ingresaste no es válida. Verifícala e inténtalo de nuevo",
+        description: res?.message || res?.error || "La clave que ingresaste no es válida. Verifícala e inténtalo de nuevo",
         variant: "error",
       })
     }

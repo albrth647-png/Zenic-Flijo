@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from src.config import DB_PATH
+from src.data.interfaces import DatabaseInterface
 from src.utils.logger import setup_logging
 
 T = TypeVar("T")
@@ -18,7 +19,7 @@ T = TypeVar("T")
 logger = setup_logging(__name__)
 
 
-class DatabaseManager:
+class DatabaseManager(DatabaseInterface):
     """Singleton que gestiona la conexion a SQLite unificada."""
 
     _instance: "DatabaseManager | None" = None
@@ -407,6 +408,10 @@ class DatabaseManager:
 
     # ── Backup ───────────────────────────────────────────────
 
+    def close(self) -> None:
+        """Cierra todas las conexiones (alias de close_all)."""
+        self.close_all()
+
     def backup(self, dest_path: str | Path) -> str:
         """Crea un backup de la base de datos."""
         dest = Path(dest_path)
@@ -522,7 +527,7 @@ class DatabaseManager:
             return False
         params.append(user_id)
         self.execute(
-            f"UPDATE users SET {', '.join(set_parts)} WHERE id = ?",
+            "UPDATE users SET " + ", ".join(set_parts) + " WHERE id = ?",
             tuple(params),
         )
         self.commit()

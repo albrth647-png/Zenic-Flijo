@@ -10,7 +10,7 @@ from src.nlu.pipeline import Pipeline
 from src.nlu.templates import TEMPLATES
 from src.web.helpers import login_required
 
-bp = Blueprint("nlp", __name__)
+bp = Blueprint("nlu", __name__)
 
 
 @bp.route("/api/nlu/understand", methods=["POST"])

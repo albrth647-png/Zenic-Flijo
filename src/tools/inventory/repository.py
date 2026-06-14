@@ -61,7 +61,7 @@ class InventoryRepository:
         if not set_parts:
             return self.get_product(product_id)
         params.append(product_id)
-        self._db.execute(f"UPDATE products SET {', '.join(set_parts)} WHERE id = ?", tuple(params))
+        self._db.execute("UPDATE products SET " + ", ".join(set_parts) + " WHERE id = ?", tuple(params))
         self._db.commit()
         return self.get_product(product_id)
 

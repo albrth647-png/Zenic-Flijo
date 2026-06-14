@@ -6,6 +6,14 @@ from flask import Blueprint, jsonify, request, session
 
 from src.config import FREE_TIER_ALLOWED_TOOLS, FREE_TIER_MAX_WORKFLOWS
 from src.license.validator import LicenseValidator
+from src.schemas import (
+    AuthStatusResponse,
+    DashboardStatsResponse,
+    ErrorResponse,
+    LicenseInfoResponse,
+    LoginResponse,
+    StatusResponse,
+)
 from src.utils.logger import setup_logging
 from src.web.helpers import _check_rate_limit, db, login_required, repo, require_role
 
@@ -49,7 +57,7 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 def api_login():
     ip = request.remote_addr or "unknown"
     if not _check_rate_limit(ip):
-        return jsonify({"error": "Demasiados intentos. Espera 15 minutos."}), 429
+        return jsonify(ErrorResponse(error="rate_limit", message="Demasiados intentos. Espera 15 minutos.").model_dump()), 429
     data = request.get_json() or {}
     username = data.get("username", "")
     password = data.get("password", "")
@@ -63,17 +71,17 @@ def api_login():
                 session["role"] = "admin"
                 session.permanent = True
                 db.audit("login.success", f"Login legacy: {username}", ip, 1)
-                return jsonify({"status": "ok", "user": username})
+                return jsonify(LoginResponse(status="ok", user=username).model_dump())
         db.audit("login.failed", f"Intento fallido para {username}", ip)
-        return jsonify({"error": "Credenciales inválidas"}), 401
+        return jsonify(ErrorResponse(error="auth_error", message="Credenciales invalidas").model_dump()), 401
 
     if not user.get("is_active", 1):
-        return jsonify({"error": "Usuario desactivado"}), 403
+        return jsonify(ErrorResponse(error="user_disabled", message="Usuario desactivado").model_dump()), 403
 
     valid = _verify_password(password, user["password_hash"])
     if not valid:
         db.audit("login.failed", f"Intento fallido para {username}", ip, user["id"])
-        return jsonify({"error": "Credenciales inválidas"}), 401
+        return jsonify(ErrorResponse(error="auth_error", message="Credenciales invalidas").model_dump()), 401
 
     session["user"] = username
     session["user_id"] = user["id"]
@@ -82,7 +90,7 @@ def api_login():
     db.audit("login.success", f"Login exitoso: {username}", ip, user["id"])
     db.execute("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", (user["id"],))
     db.commit()
-    return jsonify({"status": "ok", "user": username, "role": user["role"]})
+    return jsonify(LoginResponse(status="ok", user=username, role=user["role"]).model_dump())
 
 
 @bp.route("/api/auth/register", methods=["POST"])
@@ -96,18 +104,18 @@ def api_register():
 
     # ── Validaciones ───────────────────────────────────────
     if not username or not password:
-        return jsonify({"error": "Usuario y contraseña son requeridos"}), 400
+        return jsonify(ErrorResponse(error="validation_error", message="Usuario y contrasena son requeridos").model_dump()), 400
 
     if len(username) < 3:
-        return jsonify({"error": "El usuario debe tener al menos 3 caracteres"}), 400
+        return jsonify(ErrorResponse(error="validation_error", message="El usuario debe tener al menos 3 caracteres").model_dump()), 400
 
     if len(password) < 6:
-        return jsonify({"error": "La contraseña debe tener al menos 6 caracteres"}), 400
+        return jsonify(ErrorResponse(error="validation_error", message="La contrasena debe tener al menos 6 caracteres").model_dump()), 400
 
     # Verificar que el usuario no exista
     existing = db.get_user_by_username(username)
     if existing:
-        return jsonify({"error": "El nombre de usuario ya está registrado"}), 409
+        return jsonify(ErrorResponse(error="duplicate_user", message="El nombre de usuario ya esta registrado").model_dump()), 409
 
     try:
         user = db.create_user(
@@ -126,26 +134,26 @@ def api_register():
         ip = request.remote_addr or "unknown"
         db.audit("register.success", f"Nuevo usuario registrado: {username}", ip, user["id"])
 
-        return jsonify({
-            "status": "ok",
-            "user": username,
-            "role": user["role"],
-            "id": user["id"],
-        }), 201
+        return jsonify(LoginResponse(status="ok", user=username, role=user["role"], id=user["id"]).model_dump()), 201
     except Exception as e:
         logger.error(f"Error registrando usuario: {e}")
-        return jsonify({"error": "Error al crear la cuenta. Intenta de nuevo."}), 500
+        return jsonify(ErrorResponse(error="server_error", message="Error al crear la cuenta. Intenta de nuevo.").model_dump()), 500
 
 
 @bp.route("/api/auth/logout", methods=["POST"])
 def api_logout():
     session.pop("user", None)
-    return jsonify({"status": "ok"})
+    return jsonify(StatusResponse(status="ok").model_dump())
 
 
 @bp.route("/api/auth/status")
 def api_auth_status():
-    return jsonify({"authenticated": "user" in session})
+    authenticated = "user" in session
+    return jsonify(AuthStatusResponse(
+        authenticated=authenticated,
+        username=session.get("user") if authenticated else None,
+        role=session.get("role") if authenticated else None,
+    ).model_dump())
 
 
 # ── API: Dashboard ─────────────────────────────────────────
@@ -155,7 +163,7 @@ def api_auth_status():
 def api_dashboard_stats():
     stats = repo.get_stats()
     trial = LicenseValidator().get_trial_status()
-    return jsonify({"stats": stats, "trial": trial})
+    return jsonify(DashboardStatsResponse(stats=stats, trial=trial).model_dump())
 
 
 @bp.route("/api/dashboard/timeline")
@@ -208,6 +216,7 @@ def api_validate_license():
     result = validator.validate(key)
     if result["valid"]:
         validator.activate_key(key, result.get("type", "individual"), result.get("client_name", ""))
+    # Return raw result dict (license validation returns dynamic schema)
     return jsonify(result)
 
 
@@ -219,7 +228,7 @@ def api_license_info():
     info["is_free"] = info.get("type") == "free"
     info["max_workflows"] = FREE_TIER_MAX_WORKFLOWS if info.get("is_free") or info.get("is_trial") else -1
     info["allowed_tools"] = FREE_TIER_ALLOWED_TOOLS if info.get("is_free") or info.get("is_trial") else ["all"]
-    return jsonify(info)
+    return jsonify(LicenseInfoResponse(**info).model_dump())
 
 
 # ── API: System ────────────────────────────────────────────
@@ -231,7 +240,8 @@ def api_system_backup():
     from src.data.backup_engine import BackupEngine
     be = BackupEngine()
     path = be.backup_now()
-    return jsonify({"path": path, "status": "completed"})
+    return jsonify({"path": path, "status": "completed"})  # Return dict directly (dynamic path)
+
 
 
 @bp.route("/api/system/logs", methods=["GET"])
@@ -254,4 +264,4 @@ def api_system_status():
             "status": "running",
             "db_path": str(db._db_path),
         }
-    )
+    )  # System status endpoint (keeps raw dict for compatibility)

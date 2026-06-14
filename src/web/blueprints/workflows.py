@@ -5,6 +5,7 @@ Blueprints — Workflows CRUD, Historial y Export/Import
 from flask import Blueprint, jsonify, request, session
 
 from src.events.bus import EventBus
+from src.schemas import ErrorResponse, StatusDeletedResponse, StatusResponse, WorkflowResponse
 from src.web.helpers import _sanitize, check_free_tier, login_required, repo, require_role
 from src.workflow.repository import WorkflowDefinition
 
@@ -16,7 +17,7 @@ bp = Blueprint("workflows", __name__)
 def api_list_workflows():
     status = request.args.get("status")
     workflows = repo.list_all(status)
-    return jsonify([w.to_dict() for w in workflows])
+    return jsonify([WorkflowResponse(**w.to_dict()).model_dump() for w in workflows])
 
 
 @bp.route("/api/workflows", methods=["POST"])
@@ -44,9 +45,9 @@ def api_create_workflow():
         elif created.trigger_type == "webhook":
             event_bus.subscribe("webhook.received", created.id)
 
-        return jsonify(created.to_dict()), 201
+        return jsonify(WorkflowResponse(**created.to_dict()).model_dump()), 201
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify(ErrorResponse(error="validation_error", message=str(e)).model_dump()), 400
 
 
 @bp.route("/api/workflows/<int:wf_id>", methods=["GET"])
@@ -54,8 +55,8 @@ def api_create_workflow():
 def api_get_workflow(wf_id):
     wf = repo.get(wf_id)
     if not wf:
-        return jsonify({"error": "Workflow no encontrado"}), 404
-    return jsonify(wf.to_dict())
+        return jsonify(ErrorResponse(error="not_found", message="Workflow no encontrado").model_dump()), 404
+    return jsonify(WorkflowResponse(**wf.to_dict()).model_dump())
 
 
 @bp.route("/api/workflows/<int:wf_id>", methods=["PUT"])
@@ -65,8 +66,8 @@ def api_update_workflow(wf_id):
     data = request.get_json() or {}
     updated = repo.update(wf_id, data)
     if not updated:
-        return jsonify({"error": "Workflow no encontrado"}), 404
-    return jsonify(updated.to_dict())
+        return jsonify(ErrorResponse(error="not_found", message="Workflow no encontrado").model_dump()), 404
+    return jsonify(WorkflowResponse(**updated.to_dict()).model_dump())
 
 
 @bp.route("/api/workflows/<int:wf_id>", methods=["DELETE"])
@@ -77,7 +78,7 @@ def api_delete_workflow(wf_id):
     engine = WorkflowEngine()
     engine.pause(wf_id)
     repo.delete(wf_id)
-    return jsonify({"status": "deleted"})
+    return jsonify(StatusDeletedResponse().model_dump())
 
 
 @bp.route("/api/workflows/<int:wf_id>/activate", methods=["POST"])
@@ -87,7 +88,7 @@ def api_activate_workflow(wf_id):
     from src.workflow.engine import WorkflowEngine
     engine = WorkflowEngine()
     result = engine.resume(wf_id)
-    return jsonify({"status": "active" if result else "error"})
+    return jsonify(StatusResponse(status="active" if result else "error").model_dump())
 
 
 @bp.route("/api/workflows/<int:wf_id>/pause", methods=["POST"])
@@ -97,7 +98,7 @@ def api_pause_workflow(wf_id):
     from src.workflow.engine import WorkflowEngine
     engine = WorkflowEngine()
     result = engine.pause(wf_id)
-    return jsonify({"status": "paused" if result else "error"})
+    return jsonify(StatusResponse(status="paused" if result else "error").model_dump())
 
 
 @bp.route("/api/workflows/<int:wf_id>/<action>", methods=["POST"])

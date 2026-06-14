@@ -8,6 +8,7 @@ Conector para bases de datos PostgreSQL usando psycopg2.
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import date, datetime
 from decimal import Decimal
@@ -128,12 +129,20 @@ class PostgreSQLService:
             connection_string: String de conexión
 
         Returns:
-            dict con {inserted_id, row_count, duration_ms}
+            dict con {inserted, row_count, duration_ms}
         """
         if not connection_string:
             return self._error("connection_string requerida")
         if not data:
             return self._error("data requerido")
+
+        # Validar nombre de tabla y columnas para prevenir SQL injection
+        if not re.match(r'^[a-zA-Z0-9_]+$', table):
+            return self._error(f"Nombre de tabla invalido: {table}")
+
+        for col in data:
+            if not re.match(r'^[a-zA-Z0-9_]+$', col):
+                return self._error(f"Nombre de columna invalido: {col}")
 
         start_time = time.time()
 
@@ -190,6 +199,14 @@ class PostgreSQLService:
             return self._error("connection_string requerida")
         if not data:
             return self._error("data requerido")
+
+        # Validar nombre de tabla y columnas para prevenir SQL injection
+        if not re.match(r'^[a-zA-Z0-9_]+$', table):
+            return self._error(f"Nombre de tabla invalido: {table}")
+
+        for col in data:
+            if not re.match(r'^[a-zA-Z0-9_]+$', col):
+                return self._error(f"Nombre de columna invalido: {col}")
 
         start_time = time.time()
 

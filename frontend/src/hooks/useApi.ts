@@ -28,7 +28,9 @@ export function useApi() {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        const errMsg = data.error || `Error ${res.status}`
+        // Soporta formato ErrorResponse: { error: "code", message: "text", details: {} }
+        // y formato legacy: { error: "text" }
+        const errMsg = data.message || data.error || `Error ${res.status}`
         setError(errMsg)
         return null
       }

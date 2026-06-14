@@ -5,15 +5,82 @@ Observability — Metricas Prometheus-compatible
 Definiciones de metricas y helpers para el sistema de telemetria.
 Usa OpenTelemetry Metrics API con exportador Prometheus-compatible.
 
-Metricas definidas:
+Workflow:
 - workflow_executions_total: contador por status (completed/failed/timeout)
+- workflow_executions_by_tool: contador por tool
+- workflow_branches_taken: contador de branches ejecutados
+- workflow_loops_executed: contador de loops ejecutados
+- workflow_errors_total: contador de errores
 - workflow_step_duration_seconds: histograma por tool/action
-- workflow_active_executions: gauge de workflows ejecutandose
-- event_bus_events_published: contador por event_type
+- workflow_total_duration_seconds: histograma
+- workflow_active_executions: gauge
+
+Conectores:
 - connector_calls_total: contador por connector/status
-- connector_call_duration_seconds: histograma por connector
-- nlu_pipeline_duration_seconds: histograma
+- connector_errors_total: contador de errores
+- connector_call_duration_seconds: histograma
+
+NLU:
 - nlu_intent_classification_total: contador por intent
+- nlu_confidence_distribution: contador por rango de confianza
+- nlu_pipeline_duration_seconds: histograma
+
+Agentes (NUEVOS):
+- agent_executions_total: contador por agent_id/action/status
+- agent_tool_calls_total: contador por tool
+- agent_memory_operations_total: contador por operation
+- agent_execution_duration_seconds: histograma
+- agent_active_instances: gauge
+
+Marketplace (NUEVOS):
+- marketplace_connector_publishes_total: contador
+- marketplace_connector_installs_total: contador
+- marketplace_searches_total: contador
+- marketplace_latency_seconds: histograma
+- marketplace_connectors_available: gauge
+
+Sync (NUEVOS):
+- sync_packages_sent_total: contador
+- sync_packages_received_total: contador
+- sync_conflicts_total: contador
+- sync_bytes_transferred_total: contador
+- sync_transfer_duration_seconds: histograma
+- sync_pending_packages: gauge
+
+Partnership (NUEVOS):
+- partnership_registrations_total: contador
+- partnership_revenue_shared_total: contador
+- partnership_referrals_total: contador
+
+Security (NUEVOS):
+- security_login_attempts_total: contador
+- security_login_failures_total: contador
+- security_api_keys_created_total: contador
+- security_rbac_checks_total: contador
+
+Compliance (NUEVOS):
+- compliance_audit_checks_total: contador
+- compliance_violations_total: contador
+- compliance_reports_generated_total: contador
+
+Mobile (NUEVOS):
+- mobile_push_notifications_sent_total: contador
+- mobile_api_calls_total: contador
+
+Tenant (NUEVOS):
+- tenant_operations_total: contador
+- tenant_active_count: gauge
+
+BPMN (NUEVOS):
+- bpmn_diagrams_imported_total: contador
+- bpmn_diagrams_exported_total: contador
+
+Sistema (NUEVOS):
+- system_memory_usage_bytes: gauge
+- system_db_size_bytes: gauge
+
+Infraestructura:
+- event_bus_events_published: contador por event_type
 - db_query_duration_seconds: histograma por operation
 - http_request_duration_seconds: histograma por method/path/status
 """
@@ -72,23 +139,89 @@ class MetricsRegistry:
 
     def _register_default_metrics(self) -> None:
         """Registra las metricas por defecto del sistema."""
-        # Contadores
+        # Contadores de Workflow
         self._ensure_counter("workflow_executions_total")
+        self._ensure_counter("workflow_executions_by_tool")
+        self._ensure_counter("workflow_branches_taken")
+        self._ensure_counter("workflow_loops_executed")
+        self._ensure_counter("workflow_errors_total")
+
+        # Contadores de Eventos
         self._ensure_counter("event_bus_events_published")
+
+        # Contadores de Conectores
         self._ensure_counter("connector_calls_total")
+        self._ensure_counter("connector_errors_total")
+
+        # Contadores de NLU
         self._ensure_counter("nlu_intent_classification_total")
+        self._ensure_counter("nlu_confidence_distribution")
+
+        # Contadores de Agentes (NUEVOS)
+        self._ensure_counter("agent_executions_total")
+        self._ensure_counter("agent_tool_calls_total")
+        self._ensure_counter("agent_memory_operations_total")
+
+        # Contadores de Marketplace (NUEVOS)
+        self._ensure_counter("marketplace_connector_publishes_total")
+        self._ensure_counter("marketplace_connector_installs_total")
+        self._ensure_counter("marketplace_searches_total")
+
+        # Contadores de Sync (NUEVOS)
+        self._ensure_counter("sync_packages_sent_total")
+        self._ensure_counter("sync_packages_received_total")
+        self._ensure_counter("sync_conflicts_total")
+        self._ensure_counter("sync_bytes_transferred_total")
+
+        # Contadores de Partnership (NUEVOS)
+        self._ensure_counter("partnership_registrations_total")
+        self._ensure_counter("partnership_revenue_shared_total")
+        self._ensure_counter("partnership_referrals_total")
+
+        # Contadores de Security (NUEVOS)
+        self._ensure_counter("security_login_attempts_total")
+        self._ensure_counter("security_login_failures_total")
+        self._ensure_counter("security_api_keys_created_total")
+        self._ensure_counter("security_rbac_checks_total")
+
+        # Contadores de Compliance (NUEVOS)
+        self._ensure_counter("compliance_audit_checks_total")
+        self._ensure_counter("compliance_violations_total")
+        self._ensure_counter("compliance_reports_generated_total")
+
+        # Contadores de Mobile (NUEVOS)
+        self._ensure_counter("mobile_push_notifications_sent_total")
+        self._ensure_counter("mobile_api_calls_total")
+
+        # Contadores de Tenants (NUEVOS)
+        self._ensure_counter("tenant_operations_total")
+
+        # Contadores de BPMN (NUEVOS)
+        self._ensure_counter("bpmn_diagrams_imported_total")
+        self._ensure_counter("bpmn_diagrams_exported_total")
 
         # Histogramas
         self._ensure_histogram("workflow_step_duration_seconds")
+        self._ensure_histogram("workflow_total_duration_seconds")
         self._ensure_histogram("connector_call_duration_seconds")
         self._ensure_histogram("nlu_pipeline_duration_seconds")
         self._ensure_histogram("db_query_duration_seconds")
         self._ensure_histogram("http_request_duration_seconds")
+        self._ensure_histogram("agent_execution_duration_seconds")  # NUEVO
+        self._ensure_histogram("sync_transfer_duration_seconds")     # NUEVO
+        self._ensure_histogram("marketplace_latency_seconds")        # NUEVO
 
         # Gauges
         self._ensure_gauge("workflow_active_executions")
+        self._ensure_gauge("agent_active_instances")          # NUEVO
+        self._ensure_gauge("marketplace_connectors_available") # NUEVO
+        self._ensure_gauge("sync_pending_packages")            # NUEVO
+        self._ensure_gauge("tenant_active_count")              # NUEVO
+        self._ensure_gauge("system_memory_usage_bytes")        # NUEVO
+        self._ensure_gauge("system_db_size_bytes")             # NUEVO
 
-        logger.debug("Metricas por defecto registradas")
+        logger.debug("Metricas por defecto registradas (%d contadores, %d histogramas, %d gauges)",
+                     len(self._counters), len(self._histograms), len(self._gauges))
 
     # ── Operaciones de metricas ──────────────────────────────
 
@@ -259,9 +392,19 @@ class MetricsRegistry:
             # Contadores OTel
             counter_names = [
                 "workflow_executions_total",
+                "workflow_errors_total",
                 "event_bus_events_published",
                 "connector_calls_total",
                 "nlu_intent_classification_total",
+                "agent_executions_total",
+                "marketplace_connector_installs_total",
+                "sync_packages_sent_total",
+                "partnership_registrations_total",
+                "security_login_attempts_total",
+                "compliance_audit_checks_total",
+                "mobile_push_notifications_sent_total",
+                "tenant_operations_total",
+                "bpmn_diagrams_imported_total",
             ]
             for name in counter_names:
                 self._otel_counters[name] = self._otel_meter.create_counter(
@@ -272,10 +415,14 @@ class MetricsRegistry:
             # Histogramas OTel
             histogram_names = [
                 "workflow_step_duration_seconds",
+                "workflow_total_duration_seconds",
                 "connector_call_duration_seconds",
                 "nlu_pipeline_duration_seconds",
                 "db_query_duration_seconds",
                 "http_request_duration_seconds",
+                "agent_execution_duration_seconds",
+                "sync_transfer_duration_seconds",
+                "marketplace_latency_seconds",
             ]
             for name in histogram_names:
                 self._otel_histograms[name] = self._otel_meter.create_histogram(
@@ -284,13 +431,22 @@ class MetricsRegistry:
                     unit="s",
                 )
 
-            # Gauges OTel (usando UpDownCounter como aproximacion)
-            self._otel_gauges["workflow_active_executions"] = self._otel_meter.create_up_down_counter(
-                name="workflow_active_executions",
-                description="Gauge: currently running workflows",
-            )
+            # Gauges OTel
+            gauge_names = [
+                ("workflow_active_executions", "currently running workflows"),
+                ("agent_active_instances", "currently active agent instances"),
+                ("marketplace_connectors_available", "connectors available in marketplace"),
+                ("sync_pending_packages", "sync packages pending delivery"),
+                ("tenant_active_count", "active tenant count"),
+            ]
+            for name, desc in gauge_names:
+                self._otel_gauges[name] = self._otel_meter.create_up_down_counter(
+                    name=name,
+                    description=desc,
+                )
 
-            logger.info("Instrumentos OTel registrados para metricas")
+            logger.info("Instrumentos OTel registrados para metricas (%d counters, %d histograms, %d gauges)",
+                         len(counter_names), len(histogram_names), len(gauge_names))
         except Exception as e:
             logger.warning(f"Error registrando instrumentos OTel: {e}")
 

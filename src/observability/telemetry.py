@@ -429,6 +429,456 @@ class TelemetryService:
             labels={"operation": operation},
         )
 
+    # ── Metricas de Agentes ─────────────────────────────────
+
+    def record_agent_execution(
+        self,
+        agent_id: str,
+        action: str,
+        status: str,
+        duration: float,
+    ) -> None:
+        """
+        Registra la ejecucion de un agente.
+
+        Args:
+            agent_id: ID del agente
+            action: Accion ejecutada
+            status: Estado (started, completed, failed)
+            duration: Duracion en segundos
+        """
+        self._metrics.increment_counter(
+            "agent_executions_total",
+            labels={"agent_id": agent_id, "action": action, "status": status},
+        )
+        self._metrics.observe_histogram(
+            "agent_execution_duration_seconds",
+            duration,
+            labels={"agent_id": agent_id, "action": action},
+        )
+
+    def record_agent_tool_call(self, agent_id: str, tool: str, status: str) -> None:
+        """
+        Registra una llamada a herramienta por parte de un agente.
+
+        Args:
+            agent_id: ID del agente
+            tool: Nombre de la herramienta
+            status: Estado (success, error)
+        """
+        self._metrics.increment_counter(
+            "agent_tool_calls_total",
+            labels={"agent_id": agent_id, "tool": tool, "status": status},
+        )
+
+    def record_agent_memory_operation(self, agent_id: str, operation: str) -> None:
+        """
+        Registra una operacion de memoria de agente.
+
+        Args:
+            agent_id: ID del agente
+            operation: Tipo de operacion (read, write, delete)
+        """
+        self._metrics.increment_counter(
+            "agent_memory_operations_total",
+            labels={"agent_id": agent_id, "operation": operation},
+        )
+
+    def set_agent_active_count(self, count: int) -> None:
+        """
+        Establece el gauge de agentes activos.
+
+        Args:
+            count: Numero de agentes activos
+        """
+        self._metrics.set_gauge("agent_active_instances", float(count))
+
+    # ── Metricas de Marketplace ─────────────────────────────
+
+    def record_marketplace_publish(self, connector_name: str, status: str) -> None:
+        """
+        Registra la publicacion de un conector en el marketplace.
+
+        Args:
+            connector_name: Nombre del conector
+            status: Estado de la publicacion (success, failed)
+        """
+        self._metrics.increment_counter(
+            "marketplace_connector_publishes_total",
+            labels={"connector": connector_name, "status": status},
+        )
+
+    def record_marketplace_install(self, connector_name: str, tenant_id: str) -> None:
+        """
+        Registra la instalacion de un conector.
+
+        Args:
+            connector_name: Nombre del conector
+            tenant_id: ID del tenant
+        """
+        self._metrics.increment_counter(
+            "marketplace_connector_installs_total",
+            labels={"connector": connector_name, "tenant_id": tenant_id},
+        )
+
+    def record_marketplace_search(self, query: str = "", results_count: int = 0) -> None:
+        """
+        Registra una busqueda en el marketplace.
+
+        Args:
+            query: Texto de busqueda (truncado a 50 chars)
+            results_count: Numero de resultados
+        """
+        self._metrics.increment_counter(
+            "marketplace_searches_total",
+            labels={"has_query": "yes" if query else "no"},
+        )
+
+    def set_marketplace_connectors_available(self, count: int) -> None:
+        """
+        Establece el gauge de conectores disponibles.
+
+        Args:
+            count: Numero de conectores disponibles
+        """
+        self._metrics.set_gauge("marketplace_connectors_available", float(count))
+
+    # ── Metricas de Sync ────────────────────────────────────
+
+    def record_sync_package_sent(
+        self,
+        tenant_id: str,
+        package_size: int,
+        status: str,
+        duration: float,
+    ) -> None:
+        """
+        Registra el envio de un paquete de sync.
+
+        Args:
+            tenant_id: ID del tenant
+            package_size: Tamano del paquete en bytes
+            status: Estado (success, failed)
+            duration: Duracion en segundos
+        """
+        self._metrics.increment_counter(
+            "sync_packages_sent_total",
+            labels={"tenant_id": tenant_id, "status": status},
+        )
+        self._metrics.increment_counter(
+            "sync_bytes_transferred_total",
+            value=float(package_size),
+            labels={"direction": "outbound", "tenant_id": tenant_id},
+        )
+        self._metrics.observe_histogram(
+            "sync_transfer_duration_seconds",
+            duration,
+            labels={"tenant_id": tenant_id, "direction": "outbound"},
+        )
+
+    def record_sync_package_received(
+        self,
+        tenant_id: str,
+        package_size: int,
+        status: str,
+        duration: float,
+    ) -> None:
+        """
+        Registra la recepcion de un paquete de sync.
+
+        Args:
+            tenant_id: ID del tenant
+            package_size: Tamano del paquete en bytes
+            status: Estado (success, conflict, failed)
+            duration: Duracion en segundos
+        """
+        self._metrics.increment_counter(
+            "sync_packages_received_total",
+            labels={"tenant_id": tenant_id, "status": status},
+        )
+        self._metrics.increment_counter(
+            "sync_bytes_transferred_total",
+            value=float(package_size),
+            labels={"direction": "inbound", "tenant_id": tenant_id},
+        )
+        self._metrics.observe_histogram(
+            "sync_transfer_duration_seconds",
+            duration,
+            labels={"tenant_id": tenant_id, "direction": "inbound"},
+        )
+        if status == "conflict":
+            self._metrics.increment_counter(
+                "sync_conflicts_total",
+                labels={"tenant_id": tenant_id},
+            )
+
+    def set_sync_pending_packages(self, count: int) -> None:
+        """
+        Establece el gauge de paquetes de sync pendientes.
+
+        Args:
+            count: Numero de paquetes pendientes
+        """
+        self._metrics.set_gauge("sync_pending_packages", float(count))
+
+    # ── Metricas de Partnership ─────────────────────────────
+
+    def record_partner_registration(
+        self,
+        partner_id: str,
+        tier: str,
+        status: str,
+    ) -> None:
+        """
+        Registra el registro de un nuevo partner.
+
+        Args:
+            partner_id: ID del partner
+            tier: Nivel del partner (bronze, silver, gold, platinum)
+            status: Estado (pending, approved, rejected)
+        """
+        self._metrics.increment_counter(
+            "partnership_registrations_total",
+            labels={"tier": tier, "status": status},
+        )
+
+    def record_partner_revenue_shared(
+        self,
+        partner_id: str,
+        amount: float,
+        currency: str = "USD",
+    ) -> None:
+        """
+        Registra revenue share con un partner.
+
+        Args:
+            partner_id: ID del partner
+            amount: Monto compartido
+            currency: Moneda
+        """
+        self._metrics.increment_counter(
+            "partnership_revenue_shared_total",
+            value=amount,
+            labels={"partner_id": partner_id, "currency": currency},
+        )
+
+    def record_partner_referral(
+        self,
+        partner_id: str,
+        status: str,
+    ) -> None:
+        """
+        Registra una referencia de partner.
+
+        Args:
+            partner_id: ID del partner
+            status: Estado (converted, pending, expired)
+        """
+        self._metrics.increment_counter(
+            "partnership_referrals_total",
+            labels={"partner_id": partner_id, "status": status},
+        )
+
+    # ── Metricas de Security ────────────────────────────────
+
+    def record_login_attempt(
+        self,
+        username: str = "",
+        status: str = "success",
+        method: str = "password",
+    ) -> None:
+        """
+        Registra un intento de inicio de sesion.
+
+        Args:
+            username: Nombre de usuario (anonimizado)
+            status: Estado (success, failed)
+            method: Metodo de autenticacion (password, mfa, sso, api_key)
+        """
+        self._metrics.increment_counter(
+            "security_login_attempts_total",
+            labels={"method": method, "status": status},
+        )
+        if status == "failed":
+            self._metrics.increment_counter(
+                "security_login_failures_total",
+                labels={"method": method},
+            )
+
+    def record_api_key_created(self, user_id: str = "") -> None:
+        """
+        Registra la creacion de una API key.
+
+        Args:
+            user_id: ID del usuario
+        """
+        self._metrics.increment_counter(
+            "security_api_keys_created_total",
+            labels={"user_id": user_id},
+        )
+
+    def record_rbac_check(self, permission: str, granted: bool) -> None:
+        """
+        Registra una verificacion de permisos RBAC.
+
+        Args:
+            permission: Permiso verificado
+            granted: Si fue concedido
+        """
+        self._metrics.increment_counter(
+            "security_rbac_checks_total",
+            labels={"permission": permission, "granted": str(granted)},
+        )
+
+    # ── Metricas de Compliance ──────────────────────────────
+
+    def record_compliance_audit_check(
+        self,
+        framework: str,
+        control: str,
+        status: str,
+    ) -> None:
+        """
+        Registra una verificacion de auditoria de compliance.
+
+        Args:
+            framework: Framework (SOC2, GDPR, HIPAA)
+            control: Control verificado
+            status: Estado (pass, fail, warning)
+        """
+        self._metrics.increment_counter(
+            "compliance_audit_checks_total",
+            labels={"framework": framework, "status": status},
+        )
+        if status == "fail":
+            self._metrics.increment_counter(
+                "compliance_violations_total",
+                labels={"framework": framework, "control": control},
+            )
+
+    def record_compliance_report_generated(
+        self,
+        framework: str,
+        report_type: str,
+    ) -> None:
+        """
+        Registra la generacion de un reporte de compliance.
+
+        Args:
+            framework: Framework (SOC2, GDPR, HIPAA)
+            report_type: Tipo de reporte
+        """
+        self._metrics.increment_counter(
+            "compliance_reports_generated_total",
+            labels={"framework": framework, "type": report_type},
+        )
+
+    # ── Metricas de Mobile ──────────────────────────────────
+
+    def record_push_notification(
+        self,
+        platform: str,
+        status: str,
+    ) -> None:
+        """
+        Registra el envio de una notificacion push.
+
+        Args:
+            platform: Plataforma (ios, android)
+            status: Estado (sent, delivered, failed)
+        """
+        self._metrics.increment_counter(
+            "mobile_push_notifications_sent_total",
+            labels={"platform": platform, "status": status},
+        )
+
+    def record_mobile_api_call(self, endpoint: str, method: str, status: str) -> None:
+        """
+        Registra una llamada a la API mobile.
+
+        Args:
+            endpoint: Endpoint llamado
+            method: Metodo HTTP
+            status: Estado (success, error)
+        """
+        self._metrics.increment_counter(
+            "mobile_api_calls_total",
+            labels={"endpoint": endpoint, "method": method, "status": status},
+        )
+
+    # ── Metricas de Tenant ──────────────────────────────────
+
+    def record_tenant_operation(self, tenant_id: str, operation: str, status: str) -> None:
+        """
+        Registra una operacion de tenant.
+
+        Args:
+            tenant_id: ID del tenant
+            operation: Tipo de operacion (create, update, delete, suspend)
+            status: Estado (success, failed)
+        """
+        self._metrics.increment_counter(
+            "tenant_operations_total",
+            labels={"operation": operation, "status": status},
+        )
+
+    def set_tenant_active_count(self, count: int) -> None:
+        """
+        Establece el gauge de tenants activos.
+
+        Args:
+            count: Numero de tenants activos
+        """
+        self._metrics.set_gauge("tenant_active_count", float(count))
+
+    # ── Metricas de BPMN ────────────────────────────────────
+
+    def record_bpmn_import(self, diagram_name: str, status: str) -> None:
+        """
+        Registra la importacion de un diagrama BPMN.
+
+        Args:
+            diagram_name: Nombre del diagrama
+            status: Estado (success, failed)
+        """
+        self._metrics.increment_counter(
+            "bpmn_diagrams_imported_total",
+            labels={"status": status},
+        )
+
+    def record_bpmn_export(self, diagram_name: str, status: str) -> None:
+        """
+        Registra la exportacion de un diagrama BPMN.
+
+        Args:
+            diagram_name: Nombre del diagrama
+            status: Estado (success, failed)
+        """
+        self._metrics.increment_counter(
+            "bpmn_diagrams_exported_total",
+            labels={"status": status},
+        )
+
+    # ── Metricas de Sistema ─────────────────────────────────
+
+    def set_system_memory_usage(self, bytes_used: int) -> None:
+        """
+        Establece el gauge de uso de memoria del sistema.
+
+        Args:
+            bytes_used: Bytes de memoria usados
+        """
+        self._metrics.set_gauge("system_memory_usage_bytes", float(bytes_used))
+
+    def set_system_db_size(self, bytes_used: int) -> None:
+        """
+        Establece el gauge de tamano de la base de datos.
+
+        Args:
+            bytes_used: Tamano de la DB en bytes
+        """
+        self._metrics.set_gauge("system_db_size_bytes", float(bytes_used))
+
     # ── Acceso a componentes ─────────────────────────────────
 
     def get_tracer(self) -> Any | None:

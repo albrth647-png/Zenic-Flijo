@@ -67,7 +67,7 @@ export function SettingsPasswordTab() {
     } else {
       toast({
         title: "Error al cambiar la contraseña",
-        description: res?.error || "Verifica que la contraseña actual sea correcta",
+        description: res?.message || res?.error || "Verifica que la contraseña actual sea correcta",
         variant: "error",
       })
     }

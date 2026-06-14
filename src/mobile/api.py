@@ -326,7 +326,6 @@ async def get_sync_status(
 @router.post("/sync/push", summary="Push local changes to server")
 async def sync_push(
     device_id: str,
-    changes: dict[str, Any],
     _: Any = _MOBILE_UPDATE,
 ) -> dict[str, Any]:
     """Push locally-made changes from device to server.
@@ -398,7 +397,6 @@ async def get_notification_preferences(
 @router.put("/notifications/preferences", summary="Update notification preferences")
 async def update_notification_preferences(
     device_id: str,
-    preferences: dict[str, Any],
     _: Any = _MOBILE_UPDATE,
 ) -> dict[str, Any]:
     """Update push notification preferences for the device."""

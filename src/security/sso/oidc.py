@@ -122,6 +122,11 @@ class OIDCHandler:
             "code_verifier": code_verifier,
         }
 
+        # Validate token_url to prevent SSRF
+        if not self._is_safe_url(token_url):
+            logger.error(f"SSO OIDC: URL no segura rechazada: {token_url}")
+            return {"message": "URL de token no segura"}
+
         try:
             import urllib.request
             data = urllib.parse.urlencode(payload).encode("utf-8")
@@ -180,6 +185,12 @@ class OIDCHandler:
         userinfo_url = config.get("userinfo_url", "")
         if not userinfo_url:
             return None
+
+        # Validate userinfo_url to prevent SSRF
+        if not self._is_safe_url(userinfo_url):
+            logger.error(f"SSO OIDC: UserInfo URL no segura rechazada: {userinfo_url}")
+            return None
+
         try:
             import urllib.request
             req = urllib.request.Request(userinfo_url)
@@ -190,3 +201,50 @@ class OIDCHandler:
         except Exception as e:
             logger.error(f"SSO OIDC: Error obteniendo userinfo: {e}")
             return None
+
+    @staticmethod
+    def _is_safe_url(url: str) -> bool:
+        """Valida que una URL sea segura para prevenir SSRF.
+
+        Reglas de validacion:
+        - Solo permite esquema HTTPS (no HTTP, file, ftp, etc.)
+        - Bloquea IPs privadas/locales (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16)
+        - Bloquea localhost y variantes
+        - Permite solo dominios publicos validos
+        """
+        import ipaddress
+        import re
+        import urllib.parse
+
+        try:
+            parsed = urllib.parse.urlparse(url)
+        except Exception:
+            return False
+
+        # Solo permitir HTTPS
+        if parsed.scheme.lower() != "https":
+            return False
+
+        # Obtener hostname (sin puerto)
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return False
+
+        # Bloquear localhost y variantes
+        if hostname.lower() in {"localhost", "localhost.localdomain", "127.0.0.1", "::1"}:
+            return False
+
+        # Bloquear IPs privadas
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+                return False
+        except ValueError:
+            # No es una IP, es un hostname - validar formato
+            if not re.match(r"^[a-zA-Z0-9.-]+$", hostname):
+                return False
+            # Bloquear dominios que parezcan internos
+            if hostname.endswith((".local", ".internal", ".corp", ".lan")):
+                return False
+
+        return True

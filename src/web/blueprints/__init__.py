@@ -8,7 +8,7 @@ from src.web.blueprints import (
     compliance,
     integrations,
     marketplace,
-    nlp,
+    nlu,
     orbital,
     pages,
     partnership,
@@ -25,7 +25,7 @@ def register_blueprints(app):
     app.register_blueprint(pages.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(workflows.bp)
-    app.register_blueprint(nlp.bp)
+    app.register_blueprint(nlu.bp)
     app.register_blueprint(orbital.bp)
     app.register_blueprint(tools.bp)
     app.register_blueprint(reports.bp)
