@@ -4,7 +4,12 @@ Blueprints — Admin: Users, Dead Letter Queue y Work Queue
 
 from flask import Blueprint, jsonify, request, session
 
-from src.web.helpers import db, login_required, require_role
+from src.data.audit_repository import AuditRepository
+from src.data.user_repository import UserRepository
+from src.web.helpers import login_required, require_role
+
+users = UserRepository()
+audit = AuditRepository()
 
 bp = Blueprint("admin", __name__)
 
@@ -15,8 +20,8 @@ bp = Blueprint("admin", __name__)
 @login_required
 @require_role("admin")
 def api_list_users():
-    users = db.list_users()
-    return jsonify(users)
+    user_list = users.list_users()
+    return jsonify(user_list)
 
 
 @bp.route("/api/users", methods=["POST"])
@@ -34,18 +39,18 @@ def api_create_user():
         return jsonify({"error": "Usuario debe tener al menos 3 caracteres"}), 400
     if len(password) < 6:
         return jsonify({"error": "Contraseña debe tener al menos 6 caracteres"}), 400
-    existing = db.get_user_by_username(username)
+    existing = users.get_user_by_username(username)
     if existing:
         return jsonify({"error": "El usuario ya existe"}), 400
-    user = db.create_user(
+    new_user = users.create_user(
         username=username,
         password=password,
         role=role,
         display_name=data.get("display_name", ""),
         email=data.get("email", ""),
     )
-    db.audit("user.created", f"Usuario creado: {username}", request.remote_addr, session.get("user_id"))
-    return jsonify(user), 201
+    audit.log("user.created", f"Usuario creado: {username}", request.remote_addr, session.get("user_id"))
+    return jsonify(new_user), 201
 
 
 @bp.route("/api/users/<int:user_id>", methods=["PUT"])
@@ -57,8 +62,8 @@ def api_update_user(user_id):
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "Sin campos válidos para actualizar"}), 400
-    db.update_user(user_id, updates)
-    db.audit("user.updated", f"Usuario {user_id} actualizado", request.remote_addr, session.get("user_id"))
+    users.update_user(user_id, updates)
+    audit.log("user.updated", f"Usuario {user_id} actualizado", request.remote_addr, session.get("user_id"))
     return jsonify({"status": "updated"})
 
 
@@ -68,8 +73,8 @@ def api_update_user(user_id):
 def api_delete_user(user_id):
     if user_id == session.get("user_id"):
         return jsonify({"error": "No puedes eliminarte a ti mismo"}), 400
-    db.delete_user(user_id)
-    db.audit("user.deleted", f"Usuario {user_id} desactivado", request.remote_addr, session.get("user_id"))
+    users.delete_user(user_id)
+    audit.log("user.deleted", f"Usuario {user_id} desactivado", request.remote_addr, session.get("user_id"))
     return jsonify({"status": "deleted"})
 
 

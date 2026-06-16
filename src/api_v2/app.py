@@ -200,12 +200,26 @@ _cors_allow_all = len(_cors_origins) == 1 and _cors_origins[0] == ""
 # En producción, CORS debe ser explícito. Por defecto, no permitir orígenes arbitrarios.
 allow_origins = [] if _cors_allow_all else _cors_origins
 
+# Métodos HTTP estándar REST — explícitos, sin wildcard
+_cors_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+# Headers estándar para API REST + headers personalizados de Zenic-Flijo
+_cors_headers = [
+    "Authorization",
+    "Content-Type",
+    "X-Request-ID",
+    "X-Tenant-ID",
+    "X-API-Key",
+    "X-RateLimit-Limit",
+    "X-RateLimit-Remaining",
+    "X-RateLimit-Reset",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=_cors_methods,
+    allow_headers=_cors_headers,
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
 )
 

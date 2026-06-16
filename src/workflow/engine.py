@@ -14,6 +14,7 @@ from __future__ import annotations
 import threading
 import time
 
+from src.events.bus import EventBus
 from src.orbital.context import OrbitalContext
 from src.orbital.models import DEFAULT_THRESHOLD, RETROFEEDBACK_DAMPING
 from src.utils.logger import setup_logging
@@ -57,6 +58,7 @@ class WorkflowEngine:
             if hasattr(self, "_initialized") and self._initialized:
                 return
             self._initialized = True
+            self._event_bus = EventBus()
             self._repository = WorkflowRepository()
             self._step_executor = StepExecutor()
             self._condition_evaluator = ConditionEvaluator()
@@ -260,26 +262,21 @@ class WorkflowEngine:
         return {row["key"]: row["value"] for row in rows}
 
     def _emit_completion_event(self, definition: WorkflowDefinition, status: str, execution_id: int, duration_ms: int) -> None:
-        from src.events.bus import EventBus
-        event_bus = EventBus()
         event_type = "workflow.completed" if status == "completed" else "workflow.failed"
-        event_bus.publish(event_type, {
+        self._event_bus.publish(event_type, {
             "workflow_id": definition.id, "execution_id": execution_id,
             "duration_ms": duration_ms, "status": status,
         })
 
     def _remove_subscriptions(self, workflow_id: int) -> None:
-        from src.events.bus import EventBus
-        EventBus().unsubscribe_all(workflow_id)
+        # WorkflowSubscriber gestiona suscripciones DB; esto es un no-op
+        # ya que el EventBus pub/sub puro no tiene suscripciones DB
+        logger.debug(f"WorkflowEngine: remove_subscriptions llamado para workflow {workflow_id} (delegado a WorkflowSubscriber)")
 
     def _restore_subscriptions(self, definition: WorkflowDefinition) -> None:
-        from src.events.bus import EventBus
-        event_bus = EventBus()
-        if definition.trigger_type == "event":
-            event_config = definition.trigger_config
-            event_type = event_config.get("event", "")
-            if event_type:
-                event_bus.subscribe(event_type, definition.id)
+        # WorkflowSubscriber gestiona suscripciones DB; esto es un no-op
+        # ya que el EventBus pub/sub puro no tiene suscripciones DB
+        logger.debug(f"WorkflowEngine: restore_subscriptions llamado para workflow {definition.id} (delegado a WorkflowSubscriber)")
 
     # ── Consultas orbitales ─────────────────────────────────
 

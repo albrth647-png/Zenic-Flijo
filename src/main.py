@@ -5,7 +5,6 @@ Inicia el servidor web Flask y todos los workers en segundo plano.
 
 import contextlib
 import webbrowser
-from datetime import datetime
 
 from src.config import WEB_HOST, WEB_PORT, WEBHOOK_PORT
 from src.data.database_manager import DatabaseManager
@@ -14,21 +13,21 @@ from src.utils.logger import setup_logging
 logger = setup_logging(__name__)
 
 
-def start_workers():
-    """Inicia todos los workers en segundo plano."""
+def start_workers(event_bus, event_queue, workflow_subscriber):
+    """Inicia todos los workers en segundo plano con dependencias inyectadas."""
     workers = []
 
     # ScheduleWorker
     from src.events.schedule_worker import ScheduleWorker
 
-    sw = ScheduleWorker()
+    sw = ScheduleWorker(event_bus=event_bus)
     sw.start()
     workers.append(("ScheduleWorker", sw))
 
     # WebhookServer
     from src.events.webhook_server import WebhookServer
 
-    ws = WebhookServer()
+    ws = WebhookServer(event_bus=event_bus, workflow_subscriber=workflow_subscriber)
     ws.start(WEBHOOK_PORT)
     workers.append(("WebhookServer", ws))
 
@@ -42,31 +41,23 @@ def start_workers():
     # DatabaseTrigger — instala triggers SQL para eventos de DB
     from src.events.db_trigger import DatabaseTrigger
 
-    dt = DatabaseTrigger()
+    dt = DatabaseTrigger(event_bus=event_bus)
     dt.install_triggers()
     logger.info("DatabaseTrigger: triggers SQL instalados")
 
     # EmailWatcher — monitoreo IMAP (solo si configurado)
     from src.events.email_watcher import EmailWatcher
 
-    ew = EmailWatcher(callback=lambda event_type, data: eb.publish(event_type, data))
+    ew = EmailWatcher(callback=lambda event_type, data: event_bus.publish(event_type, data))
     ew.start()
     workers.append(("EmailWatcher", ew))
 
     # FileWatcher — monitoreo de archivos (solo si se configuran directorios)
     from src.events.file_watcher import FileWatcher
 
-    fw = FileWatcher(callback=lambda event_type, data: eb.publish(event_type, data), interval=10.0)
+    fw = FileWatcher(callback=lambda event_type, data: event_bus.publish(event_type, data), interval=10.0)
     fw.start()
     workers.append(("FileWatcher", fw))
-
-    # EventBus — reprocesar eventos pendientes
-    from src.events.bus import EventBus
-
-    eb = EventBus()
-    reprocessed = eb.reprocess_pending()
-    if reprocessed > 0:
-        logger.info(f"{reprocessed} eventos pendientes reprocesados")
 
     # WorkerManager (Sprint 7-8): workers de cola de ejecución
     from src.events.worker_manager import WorkerManager
@@ -75,16 +66,11 @@ def start_workers():
     wm.start()
     workers.append(("WorkerManager", wm))
 
-    logger.info(f"WorkerManager: {4} workers de cola iniciados")
-
-    # Emitir evento de inicio
-    eb.publish("system.started", {"timestamp": datetime.now().isoformat()})
-
     logger.info(f"Workers iniciados: {[w[0] for w in workers]}")
     return workers
 
 
-def register_tools():
+def register_tools(event_bus):
     """Registra todas las herramientas de negocio en el WorkflowEngine."""
     from src.tools.api_connector.service import APIConnectorService
     from src.tools.autopilot.service import AutoPilotService
@@ -109,13 +95,13 @@ def register_tools():
 
     engine = WorkflowEngine()
 
-    # Registrar cada tool con su servicio
-    engine.register_tool("crm", CRMService())
-    engine.register_tool("invoice", InvoiceService())
-    engine.register_tool("inventory", InventoryService())
-    engine.register_tool("notification", NotificationService())
+    # Registrar cada tool con su servicio (inyectar event_bus)
+    engine.register_tool("crm", CRMService(event_bus=event_bus))
+    engine.register_tool("invoice", InvoiceService(event_bus=event_bus))
+    engine.register_tool("inventory", InventoryService(event_bus=event_bus))
+    engine.register_tool("notification", NotificationService(event_bus=event_bus))
     engine.register_tool("autopilot", AutoPilotService())
-    engine.register_tool("logic_gate", LogicGateService())
+    engine.register_tool("logic_gate", LogicGateService(event_bus=event_bus))
     engine.register_tool("api_connector", APIConnectorService())
     engine.register_tool("data_keeper", DataKeeperService())
     engine.register_tool("code_runner", CodeRunnerTool())
@@ -145,10 +131,27 @@ def create_web_app():
 
 
 def main():
-    """Punto de entrada principal."""
+    """Punto de entrada principal con inyección de dependencias."""
     logger.info("=" * 50)
     logger.info("Workflow Determinista — Iniciando...")
     logger.info("=" * 50)
+
+    # 0. Crear dependencias compartidas
+    from src.events.bus import EventBus
+    from src.events.queue_service import EventQueueService
+    from src.events.workflow_subscriber import WorkflowSubscriber
+    from src.workflow.engine import WorkflowEngine
+
+    event_bus = EventBus()
+    event_queue = EventQueueService()
+    workflow_engine = WorkflowEngine()
+    workflow_subscriber = WorkflowSubscriber(event_bus, event_queue, workflow_engine)
+    # Registrar suscripciones DB existentes en EventBus
+    workflow_subscriber.register_all_db_subscriptions()
+
+    # Inicializar web helpers con event_bus y subscriber inyectados
+    from src.web import helpers as web_helpers
+    web_helpers.init(event_bus_instance=event_bus, subscriber=workflow_subscriber)
 
     # 1. Inicializar base de datos
     db = DatabaseManager()
@@ -160,19 +163,16 @@ def main():
         if existing_users and existing_users[0]["count"] == 0:
             import hashlib
             import secrets
-            # Usar hashlib.pbkdf2_hmac en vez de bcrypt para evitar dependencia de libgcc en Termux
             default_password = "admin123"
             _pbkdf2_iterations = 600000
             salt = secrets.token_hex(16)
             hashed = hashlib.pbkdf2_hmac("sha256", default_password.encode(), salt.encode(), iterations=_pbkdf2_iterations).hex()
             stored_hash = f"pbkdf2:sha256:{_pbkdf2_iterations}:{salt}:{hashed}"
 
-            # Legacy fallback: guardar en settings
             legacy_hash = db.get_setting("admin_password_hash")
             if not legacy_hash:
                 db.set_setting("admin_password_hash", stored_hash)
 
-            # Crear usuario en tabla users (bcrypt interno, puede fallar en Termux -> fallback)
             try:
                 db.create_user(
                     username="admin",
@@ -183,7 +183,6 @@ def main():
                 )
             except Exception as create_err:
                 logger.warning(f"Seed: create_user con bcrypt falló ({create_err}), insert manual")
-                # Insert manual con hash pbkdf2
                 db.execute(
                     "INSERT INTO users (username, password_hash, role, display_name, email) VALUES (?, ?, ?, ?, ?)",
                     ("admin", stored_hash, "admin", "Administrador", "admin@localhost"),
@@ -195,11 +194,11 @@ def main():
     except Exception as seed_err:
         logger.warning(f"Seed: no se pudo crear usuario por defecto ({seed_err}). Puedes crear uno manualmente.")
 
-    # 2. Registrar herramientas de negocio
-    register_tools()
+    # 2. Registrar herramientas de negocio (con event_bus inyectado)
+    register_tools(event_bus)
 
-    # 3. Iniciar workers
-    workers = start_workers()
+    # 3. Iniciar workers con dependencias inyectadas
+    workers = start_workers(event_bus, event_queue, workflow_subscriber)
 
     # 4. Crear y ejecutar app Flask
     app = create_web_app()
@@ -223,7 +222,6 @@ def main():
     except KeyboardInterrupt:
         logger.info("Deteniendo el sistema...")
     finally:
-        # Detener workers
         for name, worker in workers:
             if hasattr(worker, "stop"):
                 try:

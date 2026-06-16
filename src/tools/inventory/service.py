@@ -10,9 +10,9 @@ logger = setup_logging(__name__)
 
 
 class InventoryService:
-    def __init__(self):
+    def __init__(self, event_bus: EventBus | None = None):
         self._repo = InventoryRepository()
-        self._event_bus = EventBus()
+        self._event_bus = event_bus or EventBus()
 
     def add_product(
         self,

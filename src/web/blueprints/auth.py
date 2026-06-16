@@ -5,6 +5,9 @@ Blueprints — Auth, Dashboard, License y System API
 from flask import Blueprint, jsonify, request, session
 
 from src.config import FREE_TIER_ALLOWED_TOOLS, FREE_TIER_MAX_WORKFLOWS
+from src.data.audit_repository import AuditRepository
+from src.data.settings_repository import SettingsRepository
+from src.data.user_repository import UserRepository
 from src.license.validator import LicenseValidator
 from src.schemas import (
     AuthStatusResponse,
@@ -16,6 +19,10 @@ from src.schemas import (
 )
 from src.utils.logger import setup_logging
 from src.web.helpers import _check_rate_limit, db, login_required, repo, require_role
+
+users = UserRepository()
+audit = AuditRepository()
+settings = SettingsRepository()
 
 logger = setup_logging(__name__)
 
@@ -62,17 +69,17 @@ def api_login():
     username = data.get("username", "")
     password = data.get("password", "")
 
-    user = db.get_user_by_username(username)
+    user = users.get_user_by_username(username)
     if not user:
-        stored_hash = db.get_setting("admin_password_hash")
+        stored_hash = settings.get_setting("admin_password_hash")
         if stored_hash and isinstance(stored_hash, str) and _verify_password(password, stored_hash):
                 session["user"] = username
                 session["user_id"] = 1
                 session["role"] = "admin"
                 session.permanent = True
-                db.audit("login.success", f"Login legacy: {username}", ip, 1)
+                audit.log("login.success", f"Login legacy: {username}", ip, 1)
                 return jsonify(LoginResponse(status="ok", user=username).model_dump())
-        db.audit("login.failed", f"Intento fallido para {username}", ip)
+        audit.log("login.failed", f"Intento fallido para {username}", ip)
         return jsonify(ErrorResponse(error="auth_error", message="Credenciales invalidas").model_dump()), 401
 
     if not user.get("is_active", 1):
@@ -80,14 +87,14 @@ def api_login():
 
     valid = _verify_password(password, user["password_hash"])
     if not valid:
-        db.audit("login.failed", f"Intento fallido para {username}", ip, user["id"])
+        audit.log("login.failed", f"Intento fallido para {username}", ip, user["id"])
         return jsonify(ErrorResponse(error="auth_error", message="Credenciales invalidas").model_dump()), 401
 
     session["user"] = username
     session["user_id"] = user["id"]
     session["role"] = user["role"]
     session.permanent = True
-    db.audit("login.success", f"Login exitoso: {username}", ip, user["id"])
+    audit.log("login.success", f"Login exitoso: {username}", ip, user["id"])
     db.execute("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", (user["id"],))
     db.commit()
     return jsonify(LoginResponse(status="ok", user=username, role=user["role"]).model_dump())
@@ -113,12 +120,12 @@ def api_register():
         return jsonify(ErrorResponse(error="validation_error", message="La contrasena debe tener al menos 6 caracteres").model_dump()), 400
 
     # Verificar que el usuario no exista
-    existing = db.get_user_by_username(username)
+    existing = users.get_user_by_username(username)
     if existing:
         return jsonify(ErrorResponse(error="duplicate_user", message="El nombre de usuario ya esta registrado").model_dump()), 409
 
     try:
-        user = db.create_user(
+        user = users.create_user(
             username=username,
             password=password,
             role="editor",
@@ -132,7 +139,7 @@ def api_register():
         session.permanent = True
 
         ip = request.remote_addr or "unknown"
-        db.audit("register.success", f"Nuevo usuario registrado: {username}", ip, user["id"])
+        audit.log("register.success", f"Nuevo usuario registrado: {username}", ip, user["id"])
 
         return jsonify(LoginResponse(status="ok", user=username, role=user["role"], id=user["id"]).model_dump()), 201
     except Exception as e:

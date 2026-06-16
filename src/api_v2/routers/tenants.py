@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api_v2.auth import require_permission
 from src.api_v2.dependencies import get_db, get_tenant_service
+from src.data.user_repository import UserRepository
 from src.api_v2.models import (
     ErrorResponse,
     TenantCreate,
@@ -210,7 +211,8 @@ async def list_tenant_users(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Tenant '{tenant_id}' no encontrado")
 
     # Listar usuarios del tenant (usando BD del tenant)
-    users = db.list_users()
+    users_repo = UserRepository()
+    users = users_repo.list_users()
 
     return [
         TenantUserResponse(
@@ -247,7 +249,8 @@ async def add_tenant_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Tenant '{tenant_id}' no encontrado")
 
     try:
-        created_user = db.create_user(
+        users_repo = UserRepository()
+        created_user = users_repo.create_user(
             username=user_data.username,
             password=user_data.password,
             role=user_data.role,

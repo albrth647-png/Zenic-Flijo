@@ -26,8 +26,11 @@ from typing import Any
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
+from src.data.audit_repository import AuditRepository
 from src.data.database_manager import DatabaseManager
 from src.data.redis_service import RedisService
+from src.data.settings_repository import SettingsRepository
+from src.data.user_repository import UserRepository
 from src.security.rbac import RBACManager
 from src.tenant.service import TenantService
 from src.utils.logger import setup_logging
@@ -127,6 +130,9 @@ class APIKeyAuth:
     def __init__(self) -> None:
         self._db = DatabaseManager()
         self._redis = RedisService()
+        self._users = UserRepository(self._db)
+        self._settings = SettingsRepository(self._db)
+        self._audit = AuditRepository(self._db)
 
     async def __call__(self, request: Request, api_key: str = Security(api_key_header)) -> dict[str, Any]:
         """Valida la API key contra la base de datos y aplica rate limiting.
@@ -302,8 +308,8 @@ async def get_current_user(
     """
     # Intentar API key primero
     if api_key_info and api_key_info.get("user_id"):
-        db = DatabaseManager()
-        user = db.get_user(api_key_info["user_id"])
+        users = UserRepository()
+        user = users.get_user(api_key_info["user_id"])
         if user and user.get("is_active"):
             return {
                 "user_id": user["id"],

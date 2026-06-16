@@ -25,10 +25,10 @@ class LogicGateService:
     - Validar expresiones antes de usarlas
     """
 
-    def __init__(self):
+    def __init__(self, event_bus: EventBus | None = None):
         self._evaluator = ConditionEvaluator()
         self._db = DatabaseManager()
-        self._event_bus = EventBus()
+        self._event_bus = event_bus or EventBus()
 
     def evaluate_rule(self, rule: str, context: dict) -> bool:
         """

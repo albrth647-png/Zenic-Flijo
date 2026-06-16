@@ -31,7 +31,6 @@ def db_manager(db_path, monkeypatch):
 
     from src.data import database_manager
     from src.data.database_manager import DatabaseManager
-    from src.events.bus import EventBus
     from src.workflow.engine import WorkflowEngine
 
     # Also patch the imported DB_PATH in database_manager module
@@ -39,7 +38,6 @@ def db_manager(db_path, monkeypatch):
     monkeypatch.setattr(database_manager, "DB_PATH", db_path)
 
     # Reset singletons para usar nueva DB
-    EventBus._instance = None
     DatabaseManager._instance = None
     WorkflowEngine._reset()
     from src.orbital.context import OrbitalContext
@@ -49,7 +47,6 @@ def db_manager(db_path, monkeypatch):
     yield dm
     dm.close_all()
     DatabaseManager._instance = None
-    EventBus._instance = None
     WorkflowEngine._reset()
     OrbitalContext._reset()
 
@@ -119,6 +116,38 @@ def notification_service(db_manager):
     from src.tools.notification.service import NotificationService
 
     return NotificationService()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_test_license_keys(monkeypatch, db_path):
+    """Genera claves Ed25519 para tests en el directorio temporal de la BD.
+    
+    Parchea las rutas de keys.py (ya vinculadas a nivel de módulo)
+    para que apunten al directorio temporal de la BD de test.
+    """
+    import os
+    from pathlib import Path
+    
+    from src import license
+    from src.license import keys as license_keys
+    
+    # Parchear las constantes de keys.py (ya vinculadas a nivel de módulo)
+    test_keys_dir = db_path.parent / "license_keys"
+    test_keys_dir.mkdir(parents=True, exist_ok=True)
+    
+    monkeypatch.setattr(license_keys, "KEYS_DIR", test_keys_dir)
+    monkeypatch.setattr(license_keys, "PRIVATE_KEY_FILE", test_keys_dir / "private_key.enc")
+    monkeypatch.setattr(license_keys, "PUBLIC_KEY_FILE", test_keys_dir / "public_key.pem")
+    monkeypatch.setattr(license_keys, "SALT_FILE", test_keys_dir / "key_salt.bin")
+    monkeypatch.setattr(license_keys, "METADATA_FILE", test_keys_dir / "metadata.json")
+
+    # Generar keys si no existen en el path de test
+    if not (test_keys_dir / "private_key.enc").exists():
+        try:
+            license_keys.generate_keypair("test-admin-pw")
+        except Exception as e:
+            import warnings
+            warnings.warn(f"No se pudieron generar keys Ed25519 para tests: {e}")
 
 
 @pytest.fixture

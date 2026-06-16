@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -34,7 +34,7 @@ PBKDF2_ITERATIONS = 600_000
 def _derive_key(password: str, salt: bytes) -> bytes:
     """Deriva clave de cifrado desde password + salt usando PBKDF2."""
     kdf = PBKDF2HMAC(
-        algorithm="sha256",
+        algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
         iterations=PBKDF2_ITERATIONS,

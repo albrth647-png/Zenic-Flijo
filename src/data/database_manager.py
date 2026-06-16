@@ -3,24 +3,32 @@ Workflow Determinista — Database Manager (Singleton SQLite)
 Gestion de UNA sola base de datos: workflow_determinista.db
 """
 
-import json as _json
-import os
 import sqlite3
 import threading
 from pathlib import Path
-from typing import TypeVar
 
 from src.config import DB_PATH
+from src.data.audit_repository import AuditRepository
 from src.data.interfaces import DatabaseInterface
+from src.data.settings_repository import SettingsRepository
+from src.data.user_repository import UserRepository
 from src.utils.logger import setup_logging
-
-T = TypeVar("T")
 
 logger = setup_logging(__name__)
 
 
 class DatabaseManager(DatabaseInterface):
-    """Singleton que gestiona la conexion a SQLite unificada."""
+    """Singleton que gestiona la conexion a SQLite unificada.
+
+    NOTA: Los metodos de dominio (usuarios, settings, auditoria) se han
+    extraido a repositorios dedicados:
+    - UserRepository: create_user, get_user, etc.
+    - SettingsRepository: get_setting, set_setting
+    - AuditRepository: log/audit
+
+    DatabaseManager mantiene wrappers de backward compatibility que
+    delegan a los nuevos repos. Estos wrappers se eliminaran en Phase 4.5.
+    """
 
     _instance: "DatabaseManager | None" = None
     _lock = threading.RLock()
@@ -42,8 +50,11 @@ class DatabaseManager(DatabaseInterface):
             self._initialized = True
             self._db_path: Path = DB_PATH
             self._local = threading.local()
-            self._max_audit_logs = int(os.environ.get("WFD_MAX_AUDIT_LOGS", "10000"))
             self._init_database()
+            # Repositorios delegados (backward compat)
+            self._users = UserRepository(self)
+            self._settings = SettingsRepository(self)
+            self._audit = AuditRepository(self)
 
     # ── Conexion ─────────────────────────────────────────────
 
@@ -375,6 +386,14 @@ class DatabaseManager(DatabaseInterface):
             conn.commit()
             logger.info("Migración: invoices.user_id agregada")
 
+        # Migración: license.signature_b64 (Ed25519 full signature storage)
+        try:
+            cursor.execute("SELECT signature_b64 FROM license LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE license ADD COLUMN signature_b64 TEXT DEFAULT ''")
+            conn.commit()
+            logger.info("Migración: license.signature_b64 agregada")
+
     # ── Operaciones generales ────────────────────────────────
 
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
@@ -429,117 +448,52 @@ class DatabaseManager(DatabaseInterface):
         logger.info(f"Backup creado: {dest}")
         return str(dest)
 
-    # ── Settings helpers ─────────────────────────────────────
+    # ── Backward Compatibility Wrappers ──────────────────────
+    # Delegan a los nuevos repositorios. Se eliminaran en Phase 4.5
+    # cuando todos los consumidores se hayan migrado.
 
-    def get_setting(self, key: str, default: T | None = None) -> str | int | float | bool | list | dict | None:
-        """Obtiene un valor de settings con parseo JSON automatico."""
-        row = self.fetchone("SELECT value FROM settings WHERE key = ?", (key,))
-        if not row:
-            return default
-        raw = row["value"]
-        try:
-            return _json.loads(raw)
-        except (_json.JSONDecodeError, TypeError):
-            return raw
+    def get_setting(self, key: str, default=None):
+        """Wrapper: delega a SettingsRepository."""
+        return self._settings.get_setting(key, default)
 
     def set_setting(self, key: str, value: str) -> None:
-        """Guarda un valor en settings."""
-        self.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-            (key, value),
-        )
-        self.commit()
+        """Wrapper: delega a SettingsRepository."""
+        self._settings.set_setting(key, value)
 
-    # ── Audit helpers ────────────────────────────────────────
+    def audit(self, event: str, details: str | None = None, ip_address: str | None = None, user_id: int | None = None) -> None:
+        """Wrapper: delega a AuditRepository."""
+        self._audit.log(event, details, ip_address, user_id)
 
-    def audit(
-        self, event: str, details: str | None = None, ip_address: str | None = None, user_id: int | None = None
-    ) -> None:
-        """Registra un evento de auditoria."""
-        self.execute(
-            "INSERT INTO audit_log (event, details, ip_address, user_id) VALUES (?, ?, ?, ?)",
-            (event, details, ip_address, user_id),
-        )
-        import random
-
-        if random.random() < 0.1:
-            count = self.fetchone("SELECT COUNT(*) as c FROM audit_log")
-            if count and count["c"] > self._max_audit_logs:
-                delete_count = count["c"] - self._max_audit_logs
-                self.execute(
-                    "DELETE FROM audit_log WHERE id IN (SELECT id FROM audit_log ORDER BY created_at ASC LIMIT ?)",
-                    (delete_count,),
-                )
-                logger.info(f"Audit log purged: {delete_count} registros eliminados")
-        self.commit()
-
-    # ── User helpers ─────────────────────────────────────────
-
-    def create_user(
-        self, username: str, password: str, role: str = "admin", display_name: str = "", email: str = ""
-    ) -> dict:
-        """Crea un nuevo usuario con contraseña hasheada (pbkdf2)."""
-        import hashlib
-        import secrets
-
-        salt = secrets.token_hex(16)
-        iterations = 600000
-        hashed = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations).hex()
-        stored_hash = f"pbkdf2:sha256:{iterations}:{salt}:{hashed}"
-        cursor = self.execute(
-            "INSERT INTO users (username, password_hash, role, display_name, email) VALUES (?, ?, ?, ?, ?)",
-            (username, stored_hash, role, display_name, email),
-        )
-        self.commit()
-        return self.get_user(cursor.lastrowid)
+    def create_user(self, username: str, password: str, role: str = "admin", display_name: str = "", email: str = "") -> dict:
+        """Wrapper: delega a UserRepository."""
+        return self._users.create_user(username, password, role, display_name, email)
 
     def get_user(self, user_id: int) -> dict | None:
-        """Obtiene un usuario por ID."""
-        return self.fetchone(
-            "SELECT id, username, role, display_name, "
-            "email, is_active, created_at, last_login_at "
-            "FROM users WHERE id = ?",
-            (user_id,),
-        )
+        """Wrapper: delega a UserRepository."""
+        return self._users.get_user(user_id)
 
     def get_user_by_username(self, username: str) -> dict | None:
-        """Obtiene un usuario por nombre de usuario."""
-        return self.fetchone("SELECT * FROM users WHERE username = ?", (username,))
+        """Wrapper: delega a UserRepository."""
+        return self._users.get_user_by_username(username)
 
     def list_users(self) -> list[dict]:
-        """Lista todos los usuarios activos."""
-        return self.fetchall(
-            "SELECT id, username, role, display_name, "
-            "email, is_active, created_at, last_login_at "
-            "FROM users ORDER BY username"
-        )
+        """Wrapper: delega a UserRepository."""
+        return self._users.list_users()
 
     def update_user(self, user_id: int, updates: dict) -> bool:
-        """Actualiza un usuario."""
-        allowed = {"role", "display_name", "email", "is_active"}
-        set_parts = []
-        params = []
-        for key, value in updates.items():
-            if key in allowed:
-                set_parts.append(f"{key} = ?")
-                params.append(value)
-        if not set_parts:
-            return False
-        params.append(user_id)
-        self.execute(
-            "UPDATE users SET " + ", ".join(set_parts) + " WHERE id = ?",
-            tuple(params),
-        )
-        self.commit()
-        return True
+        """Wrapper: delega a UserRepository."""
+        return self._users.update_user(user_id, updates)
 
     def delete_user(self, user_id: int) -> bool:
-        """Elimina (desactiva) un usuario."""
-        self.execute("UPDATE users SET is_active = 0 WHERE id = ?", (user_id,))
-        self.commit()
-        return True
+        """Wrapper: delega a UserRepository."""
+        return self._users.delete_user(user_id)
 
     # ── Cleanup ──────────────────────────────────────────────
+
+    @classmethod
+    def _reset(cls) -> None:
+        """Reinicia el singleton (para tests)."""
+        cls._instance = None
 
     def close_all(self) -> None:
         """Cierra todas las conexiones."""

@@ -19,18 +19,35 @@ from src.config import (
 )
 from src.data.database_manager import DatabaseManager
 from src.events.bus import EventBus
+from src.events.workflow_subscriber import WorkflowSubscriber
 from src.license.validator import LicenseValidator
 from src.utils.logger import setup_logging
 from src.workflow.repository import WorkflowRepository
 
 logger = setup_logging(__name__)
 
-# ── Shared state ───────────────────────────────────────────
+# ── Shared state (configurable via helpers.init()) ───────────
 
 db = DatabaseManager()
 repo = WorkflowRepository()
-event_bus = EventBus()
+event_bus: EventBus = EventBus()
+workflow_subscriber: WorkflowSubscriber = WorkflowSubscriber()
 _login_attempts: dict[str, list[float]] = {}
+
+
+def init(event_bus_instance: EventBus | None = None, subscriber: WorkflowSubscriber | None = None) -> None:
+    """
+    Inicializa el estado compartido con dependencias inyectadas.
+
+    Args:
+        event_bus_instance: Instancia de EventBus (crea una nueva si es None)
+        subscriber: Instancia de WorkflowSubscriber
+    """
+    global event_bus, workflow_subscriber
+    if event_bus_instance is not None:
+        event_bus = event_bus_instance
+    if subscriber is not None:
+        workflow_subscriber = subscriber
 
 
 # ── Sanitization ───────────────────────────────────────────

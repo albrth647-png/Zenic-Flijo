@@ -18,9 +18,6 @@ def app_client(db_manager, monkeypatch):
     from src.web import app as app_module
     from src.workflow.repository import WorkflowRepository
 
-    # Reset EventBus singleton so a fresh one is created
-    EventBus._instance = None
-
     # Create fresh repo and event_bus that use the test DatabaseManager
     new_repo = WorkflowRepository()
     new_event_bus = EventBus()
@@ -48,9 +45,6 @@ def app_client(db_manager, monkeypatch):
 
     with app.test_client() as client:
         yield client, password
-
-    # Cleanup
-    EventBus._instance = None
 
 
 def _login(client, password):

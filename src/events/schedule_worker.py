@@ -31,12 +31,12 @@ class ScheduleWorker:
     Soporta CRON 5-field e intervalos por workflow.
     """
 
-    def __init__(self, interval: int = SCHEDULE_INTERVAL_SECONDS):
+    def __init__(self, interval: int = SCHEDULE_INTERVAL_SECONDS, event_bus: EventBus | None = None):
         self._interval = interval
         self._timer: threading.Timer | None = None
         self._running = False
         self._repository = WorkflowRepository()
-        self._event_bus = EventBus()
+        self._event_bus = event_bus or EventBus()
         self._db = DatabaseManager()
         self._lock = threading.RLock()
         # _interval_cache: workflow_id -> (last_run, interval_minutes)

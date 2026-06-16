@@ -1,172 +1,120 @@
 """
-Workflow Determinista — Tests del EventBus
-Tests unitarios para el sistema de mensajería pub/sub: suscripciones, publicación, persistencia.
+Zenic-Flijo — Tests del EventBus (Pub/Sub Puro)
+=================================================
+
+Tests para el bus de eventos simple en memoria.
+Cubre: subscribe, unsubscribe, publish, handlers, sistema de eventos.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 class TestEventBus:
-    """Tests para la clase EventBus."""
+    """Tests para el EventBus pub/sub puro."""
 
-    def test_subscribe_and_publish(self, db_manager):
-        """Test: un workflow suscrito recibe el evento publicado."""
-        from src.events.bus import EventBus
-        from src.workflow.repository import WorkflowDefinition, WorkflowRepository
-
-        # Reset singleton
-        EventBus._instance = None
-        bus = EventBus()
-
-        # Create a workflow first
-        repo = WorkflowRepository()
-        wf = repo.create(
-            WorkflowDefinition(
-                name="Test WF",
-                description="Test",
-                trigger_type="event",
-                trigger_config={"event": "test.event"},
-                steps=[{"id": 1, "tool": "crm", "action": "create_lead", "params": {"name": "Test"}}],
-            )
-        )
-
-        bus.subscribe("test.event", wf.id)
-
-        # Mock the engine execution
-        with patch("src.events.bus.EventBus._execute_workflow") as mock_exec:
-            mock_exec.return_value = {"workflow_id": wf.id, "status": "completed"}
-            results = bus.publish("test.event", {"test": "data"})
-
-        assert len(results) >= 0  # May be 0 if mock doesn't return in format expected
-        EventBus._instance = None
-
-    def test_unsubscribe(self, db_manager):
-        """Test: desuscribir un workflow lo elimina de las suscripciones."""
-        from src.events.bus import EventBus
-        from src.workflow.repository import WorkflowDefinition, WorkflowRepository
-
-        EventBus._instance = None
-        bus = EventBus()
-
-        repo = WorkflowRepository()
-        wf = repo.create(
-            WorkflowDefinition(
-                name="Test WF 2",
-                description="Test",
-                trigger_type="event",
-                trigger_config={"event": "test.unsub"},
-                steps=[{"id": 1, "tool": "crm", "action": "create_lead", "params": {"name": "Test"}}],
-            )
-        )
-
-        bus.subscribe("test.unsub", wf.id)
-        bus.unsubscribe("test.unsub", wf.id)
-
-        # Verify subscription is gone
-        subs = bus._db.fetchall(
-            "SELECT * FROM event_subscriptions WHERE event_type = ? AND workflow_id = ?",
-            ("test.unsub", wf.id),
-        )
-        assert len(subs) == 0
-        EventBus._instance = None
-
-    def test_unsubscribe_all(self, db_manager):
-        """Test: unsubscribe_all elimina todas las suscripciones de un workflow."""
-        from src.events.bus import EventBus
-        from src.workflow.repository import WorkflowDefinition, WorkflowRepository
-
-        EventBus._instance = None
-        bus = EventBus()
-
-        repo = WorkflowRepository()
-        wf = repo.create(
-            WorkflowDefinition(
-                name="Test WF 3",
-                description="Test",
-                trigger_type="event",
-                trigger_config={"event": "test.multi"},
-                steps=[{"id": 1, "tool": "crm", "action": "create_lead", "params": {"name": "Test"}}],
-            )
-        )
-
-        bus.subscribe("test.event1", wf.id)
-        bus.subscribe("test.event2", wf.id)
-        bus.unsubscribe_all(wf.id)
-
-        subs = bus._db.fetchall(
-            "SELECT * FROM event_subscriptions WHERE workflow_id = ?",
-            (wf.id,),
-        )
-        assert len(subs) == 0
-        EventBus._instance = None
-
-    def test_publish_persists_to_queue(self, db_manager):
-        """Test: publicar un evento lo guarda en la cola persistente."""
+    def test_publish_calls_handler(self):
+        """Test: publish llama al handler suscrito."""
         from src.events.bus import EventBus
 
-        EventBus._instance = None
         bus = EventBus()
-        bus.publish("test.persist", {"key": "value"})
+        handler = MagicMock()
 
-        events = bus._db.fetchall(
-            "SELECT * FROM event_queue WHERE event_type = ?",
-            ("test.persist",),
-        )
-        assert len(events) >= 1
-        assert events[0]["event_type"] == "test.persist"
-        EventBus._instance = None
+        bus.subscribe("test.event", handler)
+        bus.publish("test.event", {"key": "value"})
 
-    def test_get_pending_events(self, db_manager):
-        """Test: get_pending_events retorna eventos no procesados."""
+        handler.assert_called_once_with({"key": "value"})
+
+    def test_publish_no_handlers(self):
+        """Test: publish sin handlers no falla."""
         from src.events.bus import EventBus
 
-        EventBus._instance = None
         bus = EventBus()
-        bus.publish("test.pending", {"data": "test"})
+        bus.publish("test.none", {"data": "test"})  # No debe lanzar excepción
 
-        pending = bus.get_pending_events()
-        assert len(pending) >= 1
-        EventBus._instance = None
+    def test_publish_multiple_handlers(self):
+        """Test: publish llama a todos los handlers suscritos al mismo evento."""
+        from src.events.bus import EventBus
 
-    def test_get_system_events(self, db_manager):
+        bus = EventBus()
+        handler1 = MagicMock()
+        handler2 = MagicMock()
+
+        bus.subscribe("test.multi", handler1)
+        bus.subscribe("test.multi", handler2)
+        bus.publish("test.multi", {"msg": "hello"})
+
+        handler1.assert_called_once_with({"msg": "hello"})
+        handler2.assert_called_once_with({"msg": "hello"})
+
+    def test_unsubscribe_removes_handler(self):
+        """Test: unsubscribe elimina un handler previamente registrado."""
+        from src.events.bus import EventBus
+
+        bus = EventBus()
+        handler = MagicMock()
+
+        bus.subscribe("test.unsub", handler)
+        bus.unsubscribe("test.unsub", handler)
+        bus.publish("test.unsub", {"test": True})
+
+        handler.assert_not_called()
+
+    def test_subscribe_multiple_event_types(self):
+        """Test: un handler puede suscribirse a múltiples tipos de evento."""
+        from src.events.bus import EventBus
+
+        bus = EventBus()
+        handler = MagicMock()
+
+        bus.subscribe("type.a", handler)
+        bus.subscribe("type.b", handler)
+
+        bus.publish("type.a", {"from": "a"})
+        bus.publish("type.b", {"from": "b"})
+
+        assert handler.call_count == 2
+
+    def test_handler_error_does_not_affect_others(self):
+        """Test: un error en un handler no impide que otros handlers se ejecuten."""
+        from src.events.bus import EventBus
+
+        bus = EventBus()
+        handler_ok = MagicMock()
+
+        def failing_handler(data):
+            raise ValueError("Error simulado")
+
+        bus.subscribe("test.error", failing_handler)
+        bus.subscribe("test.error", handler_ok)
+        bus.publish("test.error", {"data": "test"})
+
+        handler_ok.assert_called_once_with({"data": "test"})
+
+    def test_get_system_events(self):
         """Test: get_system_events retorna la lista de eventos del sistema."""
         from src.events.bus import EventBus
 
-        EventBus._instance = None
-        bus = EventBus()
-        events = bus.get_system_events()
-
+        events = EventBus.get_system_events()
         assert isinstance(events, list)
         assert len(events) >= 10
         event_names = [e["event"] for e in events]
         assert "crm.lead.created" in event_names
         assert "workflow.completed" in event_names
-        assert "email.received" in event_names  # Added by fix
-        EventBus._instance = None
+        assert "email.received" in event_names
 
-    def test_add_handler(self, db_manager):
-        """Test: add_handler registra un callback en memoria."""
+    def test_independent_instances(self):
+        """Test: instancias separadas tienen handlers separados."""
         from src.events.bus import EventBus
 
-        EventBus._instance = None
-        bus = EventBus()
+        bus1 = EventBus()
+        bus2 = EventBus()
+
         handler = MagicMock()
-        bus.add_handler("test.handler", handler)
+        bus1.subscribe("test.event", handler)
 
-        bus.publish("test.handler", {"test": True})
-        handler.assert_called_once_with({"test": True})
-        EventBus._instance = None
+        bus1.publish("test.event", {"data": 1})
+        handler.assert_called_once()
 
-    def test_remove_handler(self, db_manager):
-        """Test: remove_handler elimina un callback previamente registrado."""
-        from src.events.bus import EventBus
-
-        EventBus._instance = None
-        bus = EventBus()
-        handler = MagicMock()
-        bus.add_handler("test.remove", handler)
-        bus.remove_handler("test.remove", handler)
-
-        bus.publish("test.remove", {"test": True})
-        handler.assert_not_called()
-        EventBus._instance = None
+        handler.reset_mock()
+        bus2.publish("test.event", {"data": 2})
+        handler.assert_not_called()  # bus2 no tiene handlers

@@ -1,7 +1,9 @@
 """
 Workflow Determinista — Tests del License System
-Tests unitarios para el generador y validador de licencias: formato, HMAC, trial.
+Tests unitarios para el generador y validador de licencias: formato, Ed25519, trial.
 """
+
+import pytest
 
 
 class TestLicenseGenerator:
@@ -9,7 +11,7 @@ class TestLicenseGenerator:
 
     def test_generate_key_format(self, license_generator):
         """Test: la key generada tiene formato WFD-XXXX-XXXX-XXXX-XXXX."""
-        key = license_generator.generate()
+        key = license_generator.generate(admin_password="test-admin-pw")
         parts = key.split("-")
         assert len(parts) == 5
         assert parts[0] == "WFD"
@@ -18,24 +20,46 @@ class TestLicenseGenerator:
 
     def test_generate_key_type(self, license_generator):
         """Test: la key generada con tipo 'enterprise' se puede generar."""
-        key = license_generator.generate(license_type="enterprise", client_name="Test Corp")
+        key = license_generator.generate(admin_password="test-admin-pw", license_type="enterprise", client_name="Test Corp")
         assert key.startswith("WFD-")
 
     def test_generate_key_unique(self, license_generator):
         """Test: cada key generada es única."""
-        keys = {license_generator.generate() for _ in range(10)}
+        keys = {license_generator.generate(admin_password="test-admin-pw") for _ in range(10)}
         assert len(keys) == 10
 
     def test_generate_key_valid_chars(self, license_generator):
         """Test: la key solo contiene caracteres permitidos (consonantes + dígitos)."""
         from src.license.validator import LICENSE_CHARSET
 
-        key = license_generator.generate()
+        key = license_generator.generate(admin_password="test-admin-pw")
         parts = key.split("-")
-        # Only the last block uses LICENSE_CHARSET; the first 3 blocks are HMAC hex
+        # The last block uses LICENSE_CHARSET
         random_block = parts[4]
         for char in random_block:
             assert char in LICENSE_CHARSET, f"Carácter inválido en key: {char}"
+
+    def test_generate_stores_signature(self, license_generator):
+        """Test: generate() almacena la firma completa internamente."""
+        license_generator.generate(
+            admin_password="test-admin-pw",
+            license_type="individual",
+            client_name="Sig Test",
+            days_valid=365,
+        )
+        sig = license_generator.last_signature_b64
+        assert len(sig) > 20, f"La firma almacenada es demasiado corta: {len(sig)}"
+        assert sig, "No se almacenó la firma"
+
+    def test_generate_requires_private_key(self, license_generator):
+        """Test: generate() sin clave privada debe fallar."""
+        from src.license.keys import PRIVATE_KEY_FILE
+
+        if not PRIVATE_KEY_FILE.exists():
+            pytest.skip("No hay clave privada — este test se ejecuta en entorno con keys existentes")
+        # Si la clave existe pero damos password incorrecto
+        with pytest.raises(ValueError, match="no disponible|incorrecta"):
+            license_generator.generate(admin_password="wrong-password-123")
 
 
 class TestLicenseValidator:
@@ -54,8 +78,6 @@ class TestLicenseValidator:
 
     def test_validate_nonexistent_key(self, license_validator):
         """Test: key que no existe en DB retorna valid=False."""
-        # Use a key with valid HMAC hex chars (0-9, A-F) in first 3 blocks
-        # and valid LICENSE_CHARSET chars in the last block, but not stored in DB.
         result = license_validator.validate("WFD-0A1B-2C3D-4E5F-BCDF")
         assert result["valid"] is False
         assert "no encontrada" in result["reason"]
@@ -81,33 +103,43 @@ class TestLicenseValidator:
         assert "type" in info
         assert "is_trial" in info
 
-    def test_activate_key(self, license_validator, license_generator):
+    def test_activate_key(self, license_generator, license_validator):
         """Test: activar una key la guarda en la DB."""
-        key = license_generator.generate(license_type="individual", client_name="Test Client")
-        result = license_validator.activate_key(key, license_type="individual", client_name="Test Client")
+        key = license_generator.generate(
+            admin_password="test-admin-pw",
+            license_type="individual",
+            client_name="Test Client",
+        )
+        result = license_validator.activate_key(
+            key,
+            license_type="individual",
+            client_name="Test Client",
+            signature_b64=license_generator.last_signature_b64,
+        )
         assert result["valid"] is True
         assert result["type"] == "individual"
 
     def test_full_generate_validate_cycle(self, license_generator, license_validator):
         """Test: ciclo completo de generar key → activar → validar."""
         key = license_generator.generate(
+            admin_password="test-admin-pw",
             license_type="individual",
             client_name="Cycle Test",
             days_valid=365,
         )
 
-        # Activate
+        # Activate with full Ed25519 signature
         license_validator.activate_key(
             key,
             license_type="individual",
             client_name="Cycle Test",
             days_valid=365,
+            signature_b64=license_generator.last_signature_b64,
         )
 
-        # Validate
+        # Validate — debe verificar la firma Ed25519 con la clave pública
         result = license_validator.validate(key)
-        # The key should be valid (format + stored + HMAC match)
-        assert result["valid"] is True
+        assert result["valid"] is True, f"Validación falló: {result.get('reason')}"
         assert result["type"] == "individual"
         assert result["client_name"] == "Cycle Test"
 
@@ -119,21 +151,23 @@ class TestLicenseValidator:
         assert "reseller" in LicenseValidator.LICENSE_TYPES
         assert "enterprise" in LicenseValidator.LICENSE_TYPES
 
-    def test_hmac_used_not_plain_hash(self):
-        """Test: verificar que el generador usa HMAC-SHA256 (no SHA-256 simple)."""
+    def test_generator_uses_ed25519_not_hmac(self):
+        """Test: verificar que el generador usa Ed25519 (no HMAC-SHA256)."""
         import inspect
 
         from src.license.generator import LicenseGenerator
 
         source = inspect.getsource(LicenseGenerator)
-        assert "hmac" in source
-        assert "sha256" in source
+        # El generador debe usar "sign" (Ed25519), no "hmac"
+        assert "sign(" in source or "Ed25519" in source
+        # No debe importar hmac
+        assert "import hmac" not in source
 
-    def test_validator_uses_compare_digest(self):
-        """Test: verificar que el validador usa hmac.compare_digest (timing-safe)."""
+    def test_validator_uses_ed25519_verify(self):
+        """Test: verificar que el validador usa public_key.verify() (Ed25519)."""
         import inspect
 
         from src.license.validator import LicenseValidator
 
         source = inspect.getsource(LicenseValidator)
-        assert "compare_digest" in source
+        assert "public_key.verify" in source or "load_public_key" in source

@@ -13,17 +13,14 @@ class TestScheduleWorker:
 
     def test_schedule_worker_starts_and_stops(self, db_manager):
         """Test: ScheduleWorker inicia y se detiene correctamente."""
-        from src.events.bus import EventBus
         from src.events.schedule_worker import ScheduleWorker
 
-        EventBus._instance = None
         worker = ScheduleWorker(interval=5)
         worker.start()
         assert worker.is_running() is True
 
         worker.stop()
         assert worker.is_running() is False
-        EventBus._instance = None
 
     def test_uses_threading_timer(self):
         """Test: ScheduleWorker usa threading.Timer (spec: NO APScheduler)."""

@@ -13,9 +13,9 @@ logger = setup_logging(__name__)
 
 
 class InvoiceService:
-    def __init__(self):
+    def __init__(self, event_bus: EventBus | None = None):
         self._repo = InvoiceRepository()
-        self._event_bus = EventBus()
+        self._event_bus = event_bus or EventBus()
 
     def create_invoice(
         self,

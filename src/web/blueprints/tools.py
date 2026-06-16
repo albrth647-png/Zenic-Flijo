@@ -6,7 +6,14 @@ import secrets
 
 from flask import Blueprint, jsonify, request, session
 
+from src.data.audit_repository import AuditRepository
+from src.data.settings_repository import SettingsRepository
+from src.data.user_repository import UserRepository
 from src.web.helpers import db, login_required, require_role
+
+users = UserRepository()
+audit = AuditRepository()
+settings = SettingsRepository()
 
 bp = Blueprint("tools", __name__)
 
@@ -226,11 +233,11 @@ def api_cancel_invoice(invoice_id: int):
 @login_required
 def api_get_settings():
     return jsonify({
-        "smtp_server": db.get_setting("smtp_server", ""),
-        "smtp_port": db.get_setting("smtp_port", "587"),
-        "email_user": db.get_setting("email_user", ""),
-        "webhook_api_key": db.get_setting("webhook_api_key", ""),
-        "api_key": db.get_setting("webhook_api_key", ""),
+        "smtp_server": settings.get_setting("smtp_server", ""),
+        "smtp_port": settings.get_setting("smtp_port", "587"),
+        "email_user": settings.get_setting("email_user", ""),
+        "webhook_api_key": settings.get_setting("webhook_api_key", ""),
+        "api_key": settings.get_setting("webhook_api_key", ""),
     })
 
 
@@ -240,13 +247,13 @@ def api_get_settings():
 def api_settings_api_key():
     """GET: retorna la API key actual. POST: genera/regenera una nueva."""
     if request.method == "GET":
-        key = db.get_setting("webhook_api_key", "")
+        key = settings.get_setting("webhook_api_key", "")
         return jsonify({"api_key": key})
 
     # POST: regenerar
     new_key = f"wf_{secrets.token_hex(24)}"
-    db.set_setting("webhook_api_key", new_key)
-    db.audit("api_key.regenerated", "API Key regenerada", request.remote_addr, session.get("user_id"))
+    settings.set_setting("webhook_api_key", new_key)
+    audit.log("api_key.regenerated", "API Key regenerada", request.remote_addr, session.get("user_id"))
     return jsonify({"api_key": new_key, "status": "regenerated"})
 
 
@@ -258,7 +265,7 @@ def api_update_settings():
     for key in ["smtp_server", "smtp_port", "email_user", "email_password",
                  "webhook_api_key", "imap_server", "imap_port"]:
         if key in data:
-            db.set_setting(key, str(data[key]))
+            settings.set_setting(key, str(data[key]))
     return jsonify({"status": "saved"})
 
 
@@ -276,9 +283,9 @@ def api_change_password():
 
     user_id = session.get("user_id")
     if user_id:
-        user = db.get_user(user_id)
-        if user:
-            user_full = db.get_user_by_username(user["username"])
+        user_row = users.get_user(user_id)
+        if user_row:
+            user_full = users.get_user_by_username(user_row["username"])
             if user_full and user_full.get("password_hash"):
                 try:
                     stored = user_full["password_hash"]
@@ -289,10 +296,10 @@ def api_change_password():
                 new_hash = bcrypt.hashpw(new_pass.encode(), bcrypt.gensalt(rounds=12)).decode()
                 db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
                 db.commit()
-                db.audit("password.changed", "Contraseña cambiada", request.remote_addr, user_id)
+                audit.log("password.changed", "Contraseña cambiada", request.remote_addr, user_id)
                 return jsonify({"status": "ok"})
 
-    stored_hash = db.get_setting("admin_password_hash")
+    stored_hash = settings.get_setting("admin_password_hash")
     if stored_hash and isinstance(stored_hash, str):
         try:
             if not bcrypt.checkpw(current.encode(), stored_hash.encode()):
@@ -301,8 +308,8 @@ def api_change_password():
             return jsonify({"error": "Error verificando contraseña"}), 400
 
     new_hash = bcrypt.hashpw(new_pass.encode(), bcrypt.gensalt(rounds=12)).decode()
-    db.set_setting("admin_password_hash", new_hash)
-    db.audit("password.changed", "Contraseña cambiada", request.remote_addr)
+    settings.set_setting("admin_password_hash", new_hash)
+    audit.log("password.changed", "Contraseña cambiada", request.remote_addr)
     return jsonify({"status": "ok"})
 
 

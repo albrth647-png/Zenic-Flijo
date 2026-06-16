@@ -13,9 +13,9 @@ logger = setup_logging(__name__)
 class CRMService:
     """Servicio de CRM con lógica de negocio y emisión de eventos."""
 
-    def __init__(self):
+    def __init__(self, event_bus: EventBus | None = None):
         self._repo = CRMRepository()
-        self._event_bus = EventBus()
+        self._event_bus = event_bus or EventBus()
 
     def create_lead(
         self,

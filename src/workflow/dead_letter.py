@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from src.data.database_manager import DatabaseManager
+from src.events.bus import EventBus
 from src.utils.logger import setup_logging
 
 logger = setup_logging(__name__)
@@ -94,8 +95,9 @@ class DeadLetterManager:
     de la base de datos.
     """
 
-    def __init__(self):
+    def __init__(self, event_bus: EventBus | None = None):
         self._db = DatabaseManager()
+        self._event_bus = event_bus or EventBus()
 
     # ── CRUD ────────────────────────────────────────────────
 
@@ -406,11 +408,7 @@ class DeadLetterManager:
         if entry.notified:
             return False
 
-        from src.events.bus import EventBus
-
-        event_bus = EventBus()
-
-        event_bus.publish(
+        self._event_bus.publish(
             "dead_letter.new",
             {
                 "entry_id": entry.id,

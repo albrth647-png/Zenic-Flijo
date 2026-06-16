@@ -285,10 +285,10 @@ class TenantStorageProvisioner:
             )
             for table in tables:
                 table_name = table["name"]
-                if not re.match(r"^[a-zA-Z0-9_\-\[\]\']+$", table_name):
+                if not re.match(r"^[a-zA-Z0-9_]+$", table_name):
                     logger.warning(f"Tenant: Nombre de tabla invalido ignorado: {table_name}")
                     continue
-                cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+                cursor.execute("DROP TABLE IF EXISTS \"" + table_name + "\"")
             conn.commit()
             logger.info(f"Tenant: Tablas con prefijo '{prefix}' eliminadas")
 

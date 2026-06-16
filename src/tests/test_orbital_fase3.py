@@ -378,70 +378,18 @@ class TestErrorHandlerOrbital:
 
 
 class TestEventBusOrbital:
-    def test_event_creates_orbital_variable(self):
-        """Publicar un evento debe crear una variable orbital."""
-        from src.events.bus import EventBus
+    """Tests del EventBus (pub/sub puro).
 
-        EventBus._reset()
-        bus = EventBus()
-        bus._ensure_orbital_variable("test.event")
-
-        var = bus._ctx.ovc.get_variable("test.event")
-        assert var is not None
-        assert var.orbit_group == "event_bus"
-        EventBus._reset()
-
-    def test_event_phase_deterministic(self):
-        """La fase de un evento debe ser determinista."""
-        from src.events.bus import EventBus
-
-        EventBus._reset()
-        bus = EventBus()
-
-        bus._ensure_orbital_variable("crm.lead.created")
-        phase1 = bus.get_event_phase("crm.lead.created")
-        phase2 = bus.get_event_phase("crm.lead.created")
-        assert math.isclose(phase1, phase2, abs_tol=1e-10)
-        EventBus._reset()
-
-    def test_event_resonance(self):
-        """Debe poder calcular resonancia entre tipos de eventos."""
-        from src.events.bus import EventBus
-
-        EventBus._reset()
-        bus = EventBus()
-
-        bus._ensure_orbital_variable("crm.lead.created")
-        bus._ensure_orbital_variable("invoice.created")
-        resonance = bus.get_event_resonance("crm.lead.created", "invoice.created")
-        assert resonance is not None
-        assert -1 <= resonance <= 1
-        EventBus._reset()
-
-    def test_orbital_snapshot(self):
-        """Debe generar snapshot orbital del bus."""
-        from src.events.bus import EventBus
-
-        EventBus._reset()
-        bus = EventBus()
-
-        bus._ensure_orbital_variable("test.event")
-        snapshot = bus.get_orbital_snapshot()
-        assert "variables" in snapshot
-        assert "phases" in snapshot
-        assert "orbital_mode" in snapshot
-        assert snapshot["orbital_mode"] is True
-        EventBus._reset()
+    Nota: La funcionalidad orbital del EventBus fue extraída a
+    OrbitalContext. El EventBus ahora es pub/sub simple en memoria.
+    """
 
     def test_system_events(self):
         """Debe retornar la lista de eventos del sistema."""
         from src.events.bus import EventBus
 
-        EventBus._reset()
-        bus = EventBus()
-        events = bus.get_system_events()
+        events = EventBus.get_system_events()
         assert len(events) > 0
-        EventBus._reset()
 
 
 # ══════════════════════════════════════════════════════════════

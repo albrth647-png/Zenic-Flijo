@@ -20,9 +20,10 @@ logger = setup_logging(__name__)
 class WebhookHandler(BaseHTTPRequestHandler):
     """Manejador HTTP para webhooks."""
 
-    # Compartidos entre instancias
+    # Compartidos entre instancias (asignados por WebhookServer)
     event_bus: EventBus | None = None
     db: DatabaseManager | None = None
+    results_getter = None  # Callable que retorna resultados tras publish()
 
     def do_POST(self):
         """Maneja peticiones POST a /webhook/<workflow_id>."""
@@ -69,12 +70,20 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         # Publicar evento — pasar body directamente a $input para resolución de variables
         try:
-            bus = self.event_bus or EventBus()
+            bus = self.event_bus
+            if bus is None:
+                self._send_json(500, {"error": "EventBus no configurado"})
+                return
             # Pasar datos planos + workflow_id para que $input.nombre funcione
             # y EventBus pueda filtrar por workflow_id si es necesario
             webhook_data = dict(data)
             webhook_data["_workflow_id"] = workflow_id
-            results = bus.publish("webhook.received", webhook_data)
+            bus.publish("webhook.received", webhook_data)
+
+            # Obtener resultados desde el subscriber (si está configurado)
+            results = []
+            if self.results_getter is not None:
+                results = self.results_getter()
 
             self._send_json(
                 200,
@@ -119,8 +128,17 @@ class WebhookServer:
     Se inicia en un hilo separado en el puerto configurado.
     """
 
-    def __init__(self, port: int = WEBHOOK_PORT):
+    def __init__(
+        self,
+        port: int = WEBHOOK_PORT,
+        event_bus: EventBus | None = None,
+        db: DatabaseManager | None = None,
+        workflow_subscriber: object | None = None,
+    ):
         self._port = port
+        self._event_bus = event_bus
+        self._db = db
+        self._subscriber = workflow_subscriber
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -131,8 +149,10 @@ class WebhookServer:
             self._port = port
 
         # Configurar dependencias compartidas
-        WebhookHandler.event_bus = EventBus()
-        WebhookHandler.db = DatabaseManager()
+        WebhookHandler.event_bus = self._event_bus or EventBus()
+        WebhookHandler.db = self._db or DatabaseManager()
+        if self._subscriber is not None:
+            WebhookHandler.results_getter = lambda: getattr(self._subscriber, 'last_results', [])
 
         try:
             # Permitir reuso inmediato del puerto tras reinicio (antes del bind)

@@ -43,9 +43,9 @@ class DatabaseTrigger:
         },
     }
 
-    def __init__(self):
+    def __init__(self, event_bus: EventBus | None = None):
         self._db = DatabaseManager()
-        self._event_bus = EventBus()
+        self._event_bus = event_bus or EventBus()
         self._snapshots: dict[str, dict[int, dict]] = {}
 
     def install_triggers(self) -> None:

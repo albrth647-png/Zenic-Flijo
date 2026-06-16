@@ -4,9 +4,8 @@ Blueprints — Workflows CRUD, Historial y Export/Import
 
 from flask import Blueprint, jsonify, request, session
 
-from src.events.bus import EventBus
 from src.schemas import ErrorResponse, StatusDeletedResponse, StatusResponse, WorkflowResponse
-from src.web.helpers import _sanitize, check_free_tier, login_required, repo, require_role
+from src.web.helpers import _sanitize, check_free_tier, login_required, repo, require_role, workflow_subscriber
 from src.workflow.repository import WorkflowDefinition
 
 bp = Blueprint("workflows", __name__)
@@ -36,14 +35,13 @@ def api_create_workflow():
         )
         created = repo.create(wf, user_id=session.get("user_id"))
 
-        event_bus = EventBus()
         if created.trigger_type == "event":
             event_config = created.trigger_config
             event_type = event_config.get("event", "")
             if event_type:
-                event_bus.subscribe(event_type, created.id)
+                workflow_subscriber.subscribe(event_type, created.id)
         elif created.trigger_type == "webhook":
-            event_bus.subscribe("webhook.received", created.id)
+            workflow_subscriber.subscribe("webhook.received", created.id)
 
         return jsonify(WorkflowResponse(**created.to_dict()).model_dump()), 201
     except ValueError as e:
@@ -77,6 +75,8 @@ def api_delete_workflow(wf_id):
     from src.workflow.engine import WorkflowEngine
     engine = WorkflowEngine()
     engine.pause(wf_id)
+    # Limpiar suscripciones del workflow eliminado
+    workflow_subscriber.unsubscribe_all(wf_id)
     repo.delete(wf_id)
     return jsonify(StatusDeletedResponse().model_dump())
 
@@ -88,6 +88,15 @@ def api_activate_workflow(wf_id):
     from src.workflow.engine import WorkflowEngine
     engine = WorkflowEngine()
     result = engine.resume(wf_id)
+    # Restaurar suscripciones via WorkflowSubscriber
+    if result:
+        wf = repo.get(wf_id)
+        if wf and wf.trigger_type == "event":
+            event_type = wf.trigger_config.get("event", "")
+            if event_type:
+                workflow_subscriber.subscribe(event_type, wf_id)
+        elif wf and wf.trigger_type == "webhook":
+            workflow_subscriber.subscribe("webhook.received", wf_id)
     return jsonify(StatusResponse(status="active" if result else "error").model_dump())
 
 
@@ -98,6 +107,9 @@ def api_pause_workflow(wf_id):
     from src.workflow.engine import WorkflowEngine
     engine = WorkflowEngine()
     result = engine.pause(wf_id)
+    # Eliminar suscripciones via WorkflowSubscriber
+    if result:
+        workflow_subscriber.unsubscribe_all(wf_id)
     return jsonify(StatusResponse(status="paused" if result else "error").model_dump())
 
 
@@ -112,9 +124,19 @@ def api_workflow_action(wf_id, action):
     if action == "activate":
         result = engine.resume(wf_id)
         status = "active" if result else "error"
+        if result:
+            wf = repo.get(wf_id)
+            if wf and wf.trigger_type == "event":
+                event_type = wf.trigger_config.get("event", "")
+                if event_type:
+                    workflow_subscriber.subscribe(event_type, wf_id)
+            elif wf and wf.trigger_type == "webhook":
+                workflow_subscriber.subscribe("webhook.received", wf_id)
     elif action == "pause":
         result = engine.pause(wf_id)
         status = "paused" if result else "error"
+        if result:
+            workflow_subscriber.unsubscribe_all(wf_id)
     else:
         return jsonify({"error": "Acción inválida. Use 'activate' o 'pause'"}), 400
 
