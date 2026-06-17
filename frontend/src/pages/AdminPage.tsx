@@ -10,6 +10,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
+import { MetricsTab } from "@/components/admin/MetricsTab"
+import { AlertsTab } from "@/components/admin/AlertsTab"
 import {
   Users as UsersIcon,
   Trash2,
@@ -761,6 +763,20 @@ export default function AdminPage() {
             <Activity className="mr-1.5 h-4 w-4" />
             Cola de trabajos
           </TabsTrigger>
+          <TabsTrigger
+            value="metrics"
+            className="data-[state=active]:bg-zinc-800 data-[state=active]:text-zinc-100"
+          >
+            <Activity className="mr-1.5 h-4 w-4" />
+            Métricas
+          </TabsTrigger>
+          <TabsTrigger
+            value="alerts"
+            className="data-[state=active]:bg-zinc-800 data-[state=active]:text-zinc-100"
+          >
+            <AlertCircle className="mr-1.5 h-4 w-4" />
+            Alertas
+          </TabsTrigger>
         </TabsList>
 
         <div className="mt-4">
@@ -784,6 +800,22 @@ export default function AdminPage() {
             <Card className="border-zinc-800 bg-zinc-900/50">
               <CardContent className="p-4">
                 <QueueTab />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="metrics">
+            <Card className="border-zinc-800 bg-zinc-900/50">
+              <CardContent className="p-4">
+                <MetricsTab />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="alerts">
+            <Card className="border-zinc-800 bg-zinc-900/50">
+              <CardContent className="p-4">
+                <AlertsTab />
               </CardContent>
             </Card>
           </TabsContent>
