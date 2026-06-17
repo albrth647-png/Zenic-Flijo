@@ -41,7 +41,9 @@ logger = setup_logging(__name__)
 
 _API_KEY_PREFIX = "zf_"
 _JWT_SECRET_ENV = "WFD_API_V2_JWT_SECRET"
-_JWT_DEFAULT_SECRET = "dev-only-secret-change-in-production"
+# Mínimo de caracteres para considerar el secreto aceptable.
+# 64 chars base64 ≈ 384 bits de entropía (suficiente para HMAC-SHA256).
+_JWT_SECRET_MIN_LEN = 64
 _RATE_LIMIT_WINDOW = 60  # segundos
 _RATE_LIMIT_MAX_REQUESTS = 100  # requests por ventana
 
@@ -55,8 +57,53 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _get_jwt_secret() -> str:
-    """Obtiene el secreto JWT desde la variable de entorno."""
-    return os.environ.get(_JWT_SECRET_ENV, _JWT_DEFAULT_SECRET)
+    """Obtiene el secreto JWT desde la variable de entorno.
+
+    CRÍTICO: No hay default. La app DEBE configurar WFD_API_V2_JWT_SECRET
+    con un valor aleatorio de al menos 64 caracteres. En producción, si no
+    está configurado o es demasiado corto, se lanza RuntimeError para evitar
+    arrancar con un secreto débil o inexistente (que permitiría a cualquier
+    atacante con acceso al código forjar tokens JWT).
+
+    En desarrollo (WFD_PRODUCTION != "true"), si no está configurado se
+    genera uno aleatorio por sesión y se emite un warning.
+    """
+    secret = os.environ.get(_JWT_SECRET_ENV, "")
+    production = os.environ.get("WFD_PRODUCTION", "false").lower() == "true"
+
+    if secret and len(secret) >= _JWT_SECRET_MIN_LEN:
+        return secret
+
+    if production:
+        raise RuntimeError(
+            "SEGURIDAD CRÍTICA: WFD_API_V2_JWT_SECRET no configurado o demasiado corto "
+            f"(mínimo {_JWT_SECRET_MIN_LEN} caracteres). Genere uno nuevo con, por ejemplo:  "
+            "python3 -c \"import secrets; print(secrets.token_urlsafe(48))\"  "
+            "y configúrelo en su entorno antes de desplegar."
+        )
+
+    # Modo desarrollo: generar uno aleatorio efímero y avisar.
+    if not secret:
+        import secrets as _secrets
+        import warnings
+        secret = _secrets.token_urlsafe(48)
+        warnings.warn(
+            "WFD_API_V2_JWT_SECRET no configurado. Se generó un secreto aleatorio "
+            "efímero para esta sesión. NO use esto en producción. Configure la "
+            "variable de entorno WFD_API_V2_JWT_SECRET con un valor aleatorio de "
+            f"al menos {_JWT_SECRET_MIN_LEN} caracteres.",
+            stacklevel=2,
+        )
+        return secret
+
+    # Secret configurado pero demasiado corto — advertir pero permitir en dev.
+    import warnings
+    warnings.warn(
+        f"WFD_API_V2_JWT_SECRET tiene {len(secret)} caracteres; se recomiendan "
+        f"al menos {_JWT_SECRET_MIN_LEN}. Considere rotarlo por uno más largo.",
+        stacklevel=2,
+    )
+    return secret
 
 
 def generate_token(payload: dict[str, Any], expires_in: int = 3600) -> str:
