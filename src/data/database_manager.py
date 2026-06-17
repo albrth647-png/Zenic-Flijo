@@ -331,6 +331,68 @@ class DatabaseManager(DatabaseInterface):
         CREATE INDEX IF NOT EXISTS idx_dead_letter_created ON dead_letter_queue(created_at);
 
         CREATE INDEX IF NOT EXISTS idx_nlp_synonyms_intent ON nlp_synonyms(intent);
+
+        -- ─── Sprint 9: Multi-entorno + Versioning ──────────────
+        -- Cada UPDATE de un workflow crea una nueva versión (snapshot completo).
+        -- Retención: 20 versiones más recientes por workflow (configurable).
+        CREATE TABLE IF NOT EXISTS workflow_versions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id     INTEGER NOT NULL,
+            version_number  INTEGER NOT NULL,
+            name            TEXT NOT NULL,
+            description     TEXT,
+            trigger_type    TEXT NOT NULL,
+            trigger_config  TEXT NOT NULL,
+            steps           TEXT NOT NULL,
+            change_summary  TEXT DEFAULT '',
+            created_by      INTEGER DEFAULT 1,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workflow_id) REFERENCES workflow_definitions(id) ON DELETE CASCADE,
+            UNIQUE(workflow_id, version_number)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_workflow_versions_workflow ON workflow_versions(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_workflow_versions_created ON workflow_versions(created_at);
+
+        -- Tabla que asocia workflows a entornos (dev/staging/prod).
+        -- Un mismo workflow lógico puede tener N filas, una por entorno.
+        -- El environment_id es un identificador lógico (no FK) que permite
+        -- separar entornos en la misma DB (free/smb) o en DBs dedicadas (enterprise).
+        CREATE TABLE IF NOT EXISTS workflow_environments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id     INTEGER NOT NULL,
+            environment     TEXT NOT NULL CHECK(environment IN ('dev','staging','prod')),
+            promoted_from   TEXT,
+            promoted_at     TIMESTAMP,
+            promoted_by     INTEGER DEFAULT 1,
+            is_current      INTEGER DEFAULT 0,
+            notes           TEXT DEFAULT '',
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workflow_id) REFERENCES workflow_definitions(id) ON DELETE CASCADE,
+            UNIQUE(workflow_id, environment)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_workflow_environments_env ON workflow_environments(environment);
+        CREATE INDEX IF NOT EXISTS idx_workflow_environments_current ON workflow_environments(is_current);
+
+        -- Tabla de promociones entre entornos (auditoría).
+        CREATE TABLE IF NOT EXISTS workflow_promotions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id     INTEGER NOT NULL,
+            source_env      TEXT NOT NULL,
+            target_env      TEXT NOT NULL,
+            source_version  INTEGER,
+            target_version  INTEGER,
+            diff_summary    TEXT DEFAULT '',
+            status          TEXT NOT NULL DEFAULT 'completed',
+            promoted_by     INTEGER DEFAULT 1,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workflow_id) REFERENCES workflow_definitions(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_workflow_promotions_workflow ON workflow_promotions(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_workflow_promotions_status ON workflow_promotions(status);
         """
 
     def _migrate(self) -> None:

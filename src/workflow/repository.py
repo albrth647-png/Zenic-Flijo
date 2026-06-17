@@ -192,8 +192,21 @@ class WorkflowRepository:
             rows = self._db.fetchall("SELECT * FROM workflow_definitions ORDER BY updated_at DESC")
         return [WorkflowDefinition.from_dict(r) for r in rows]
 
-    def update(self, workflow_id: int, updates: dict) -> WorkflowDefinition | None:
-        """Actualiza campos de una definición de workflow."""
+    def update(
+        self,
+        workflow_id: int,
+        updates: dict,
+        create_version: bool = False,
+        change_summary: str = "",
+        user_id: int | None = None,
+    ) -> WorkflowDefinition | None:
+        """
+        Actualiza campos de una definición de workflow.
+
+        Si ``create_version=True`` (Sprint 9), crea automáticamente una nueva
+        versión en ``workflow_versions`` con un snapshot del estado resultante.
+        Esto permite rollback y auditoría sin acoplar el llamador al sistema de versioning.
+        """
         allowed_fields = {"name", "description", "trigger_type", "trigger_config", "steps", "status"}
         set_parts = []
         params = []
@@ -219,6 +232,29 @@ class WorkflowRepository:
         )
         self._db.commit()
         self._db.audit("workflow.updated", f"Workflow ID {workflow_id} actualizado")
+
+        # Sprint 9: crear versión si se solicitó
+        if create_version:
+            updated = self.get(workflow_id)
+            if updated:
+                try:
+                    from src.workflow.versioning import WorkflowVersionRepository
+
+                    version_repo = WorkflowVersionRepository(self._db)
+                    version_repo.create_version(
+                        workflow_id=workflow_id,
+                        name=updated.name,
+                        description=updated.description,
+                        trigger_type=updated.trigger_type,
+                        trigger_config=updated.trigger_config,
+                        steps=updated.steps,
+                        change_summary=change_summary or f"Update de campos: {', '.join(updates.keys())}",
+                        created_by=user_id or 1,
+                    )
+                except Exception as exc:
+                    # El versioning no debe romper el update principal
+                    logger.warning(f"versioning falló en update de workflow {workflow_id}: {exc}")
+
         return self.get(workflow_id)
 
     def delete(self, workflow_id: int) -> bool:
