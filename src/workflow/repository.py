@@ -14,6 +14,7 @@ from src.config import FREE_TIER_MAX_WORKFLOWS
 from src.data.database_manager import DatabaseManager
 from src.utils.helpers import now_iso
 from src.utils.logger import setup_logging
+from src.utils.sql import build_update_query
 
 logger = setup_logging(__name__)
 
@@ -207,29 +208,26 @@ class WorkflowRepository:
         versión en ``workflow_versions`` con un snapshot del estado resultante.
         Esto permite rollback y auditoría sin acoplar el llamador al sistema de versioning.
         """
-        allowed_fields = {"name", "description", "trigger_type", "trigger_config", "steps", "status"}
-        set_parts = []
-        params = []
-
+        allowed_fields = {"name", "description", "trigger_type", "trigger_config", "steps", "status", "updated_at"}
+        # Pre-procesar fields: serializar trigger_config y steps como JSON
+        processed_fields = {}
         for key, value in updates.items():
             if key in allowed_fields:
-                set_parts.append(f"{key} = ?")
                 if key in ("trigger_config", "steps"):
-                    params.append(json.dumps(value))
-                else:
-                    params.append(value)
+                    value = json.dumps(value)
+                processed_fields[key] = value
 
-        if not set_parts:
-            return self.get(workflow_id)
-
-        set_parts.append("updated_at = ?")
-        params.append(now_iso())
-        params.append(workflow_id)
-
-        self._db.execute(
-            "UPDATE workflow_definitions SET " + ", ".join(set_parts) + " WHERE id = ?",
-            tuple(params),
+        result = build_update_query(
+            "workflow_definitions",
+            allowed_fields,
+            processed_fields,
+            extra_set={"updated_at": now_iso()},
         )
+        if result is None:
+            return self.get(workflow_id)
+        sql, params = result
+
+        self._db.execute(sql, (*params, workflow_id))
         self._db.commit()
         self._db.audit("workflow.updated", f"Workflow ID {workflow_id} actualizado")
 

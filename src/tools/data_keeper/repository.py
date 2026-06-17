@@ -13,6 +13,7 @@ from datetime import datetime
 from src.data.database_manager import DatabaseManager
 from src.tools.data_keeper.models import validate_name, validate_schema
 from src.utils.logger import setup_logging
+from src.utils.sql import quote_identifier
 
 logger = setup_logging(__name__)
 
@@ -122,10 +123,10 @@ class DataKeeperRepository:
             sql_type = type_map.get(field_type, "TEXT")
             columns.append(f'"{field_name}" {sql_type}')
 
-        # Crear tabla
-        # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
-        create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(columns)})"
-        conn.execute(create_sql)
+        # Crear tabla — table_name y columns ya validados por validate_name() + quote_identifier.
+        # B608 mitigado: identificadores pasan quote_identifier (regex estricto).
+        create_sql = f"CREATE TABLE IF NOT EXISTS {quote_identifier(table_name)} ({', '.join(columns)})"
+        conn.execute(create_sql)  # nosec B608 — identificadores validados
         conn.commit()
 
     def insert(self, collection_name: str, data: dict) -> dict:
@@ -152,9 +153,9 @@ class DataKeeperRepository:
         placeholders = ", ".join("?" for _ in allowed_fields)
 
         conn = self._db.get_connection()
-        # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
+        # table_name y field_list validados via quote_identifier (B608 mitigado).
         cursor = conn.execute(
-            f"INSERT INTO {table_name} ({field_list}) VALUES ({placeholders})",
+            f"INSERT INTO {quote_identifier(table_name)} ({field_list}) VALUES ({placeholders})",  # nosec B608 — identificadores validados
             values,
         )
         conn.commit()
@@ -186,7 +187,7 @@ class DataKeeperRepository:
 
         try:
             row = conn.execute(
-                f"SELECT * FROM {table_name} WHERE id = ?",
+                f"SELECT * FROM {quote_identifier(table_name)} WHERE id = ?",  # nosec B608 — table_name validado
                 (record_id,),
             ).fetchone()
 
@@ -196,7 +197,7 @@ class DataKeeperRepository:
             # PRAGMA table_info retorna: cid, name, type, notnull, dflt_value, pk
             # desc[1] = name (nombre de columna)
             # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
-            columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+            columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({quote_identifier(table_name)})").fetchall()]  # nosec B608 — table_name validado
 
             result = dict(zip(columns, row, strict=False))
             return self._convert_types(result, collection["schema"])
@@ -231,12 +232,12 @@ class DataKeeperRepository:
                 where_sql = " WHERE " + " AND ".join(where_clauses)
 
             # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
-            sql = f"SELECT * FROM {table_name}{where_sql} ORDER BY id DESC LIMIT ? OFFSET ?"
+            sql = f"SELECT * FROM {quote_identifier(table_name)}{where_sql} ORDER BY id DESC LIMIT ? OFFSET ?"  # nosec B608 — table_name validado
             values.extend([limit, offset])
 
             rows = conn.execute(sql, values).fetchall()
             # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
-            columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+            columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({quote_identifier(table_name)})").fetchall()]  # nosec B608 — table_name validado
 
             return [self._convert_types(dict(zip(columns, row, strict=False)), collection["schema"]) for row in rows]
 
@@ -271,7 +272,7 @@ class DataKeeperRepository:
 
         # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
         conn.execute(
-            f"UPDATE {table_name} SET {set_sql} WHERE id = ?",
+            f"UPDATE {quote_identifier(table_name)} SET {set_sql} WHERE id = ?",  # nosec B608 — table_name validado
             values,
         )
         conn.commit()
@@ -291,7 +292,7 @@ class DataKeeperRepository:
         conn = self._db.get_connection()
         # table_name is safe: collection_name validated by validate_name() (only alphanumeric + underscore)
         cursor = conn.execute(
-            f"DELETE FROM {table_name} WHERE id = ?",
+            f"DELETE FROM {quote_identifier(table_name)} WHERE id = ?",  # nosec B608 — table_name validado
             (record_id,),
         )
         conn.commit()

@@ -296,6 +296,7 @@ class TestIntegrationWithSQLite:
         conn.commit()
 
         in_clause = build_in_clause(3)
-        sql = f"SELECT name FROM leads WHERE id IN {in_clause}"
+        # in_clause proviene de build_in_clause() que solo retorna (?, ?, ?) — seguro.
+        sql = f"SELECT name FROM leads WHERE id IN {in_clause}"  # nosec B608 — in_clause es placeholders seguro
         rows = conn.execute(sql, (1, 2, 3)).fetchall()
         assert [r[0] for r in rows] == ["A", "B", "C"]

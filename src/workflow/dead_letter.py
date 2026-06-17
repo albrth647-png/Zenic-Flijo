@@ -181,8 +181,9 @@ class DeadLetterManager:
             params.append(workflow_id)
 
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
+        # where se construye solo con strings hardcoded ("status = ?", "workflow_id = ?"). B608 falso positivo.
         sql = f"""SELECT * FROM dead_letter_queue {where}
-                  ORDER BY created_at DESC LIMIT ? OFFSET ?"""
+                  ORDER BY created_at DESC LIMIT ? OFFSET ?"""  # nosec B608 — where construido con literals
         params.extend([limit, offset])
 
         rows = self._db.fetchall(sql, tuple(params))
@@ -201,7 +202,7 @@ class DeadLetterManager:
             params.append(workflow_id)
 
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
-        sql = f"SELECT COUNT(*) as count FROM dead_letter_queue {where}"
+        sql = f"SELECT COUNT(*) as count FROM dead_letter_queue {where}"  # nosec B608 — where construido con literals
 
         row = self._db.fetchone(sql, tuple(params))
         return row["count"] if row else 0

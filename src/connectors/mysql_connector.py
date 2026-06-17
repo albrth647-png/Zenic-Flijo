@@ -330,7 +330,8 @@ class MysqlConnectorConnector(BaseConnector):
         columns = ", ".join(data.keys())
         placeholders = ", ".join(["%s"] * len(data))
         values = list(data.values())
-        query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+        # table_name y columns validados con regex ^[a-zA-Z0-9_]+$ arriba (B608 mitigado).
+        query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"  # nosec B608 — identificadores validados con regex
 
         if self._use_http:
             return self._execute_query_http(query, values)

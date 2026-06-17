@@ -69,12 +69,12 @@ def _parse_input(input_data: str | None) -> dict[str, Any]:
             content = input_path.read_text(encoding="utf-8")
             return json.loads(content)
         except (json.JSONDecodeError, OSError) as exc:
-            print(f"Error: No se pudo leer el archivo de entrada '{input_data}': {exc}")
+            print(f"Error: No se pudo leer el archivo de entrada '{input_data}': {exc}", file=sys.stderr)
             return {}
     try:
         return json.loads(input_data)
     except json.JSONDecodeError as exc:
-        print(f"Error: No se pudo parsear el input como JSON: {exc}")
+        print(f"Error: No se pudo parsear el input como JSON: {exc}", file=sys.stderr)
         return {}
 
 
@@ -83,11 +83,11 @@ def _parse_input(input_data: str | None) -> dict[str, Any]:
 def _load_connector(connector_path: Path) -> Any | None:
     """Importa y crea una instancia del conector desde la ruta especificada."""
     if not connector_path.exists():
-        print(f"Error: El directorio '{connector_path}' no existe")
+        print(f"Error: El directorio '{connector_path}' no existe", file=sys.stderr)
         return None
     connector_py = connector_path / "connector.py"
     if not connector_py.exists():
-        print(f"Error: No se encontro connector.py en '{connector_path}'")
+        print(f"Error: No se encontro connector.py en '{connector_path}'", file=sys.stderr)
         return None
     module = _import_connector_module(connector_path)
     if module is None:
@@ -106,9 +106,9 @@ def _load_connector(connector_path: Path) -> Any | None:
                 print(f"Conector cargado: {attr_value.__name__} (name='{instance.name}', version='{instance.version}')")
                 return instance
             except Exception as exc:
-                print(f"Error: No se pudo instanciar el conector: {exc}")
+                print(f"Error: No se pudo instanciar el conector: {exc}", file=sys.stderr)
                 return None
-    print("Error: No se encontro una clase que herede de BaseConnector en connector.py")
+    print("Error: No se encontro una clase que herede de BaseConnector en connector.py", file=sys.stderr)
     return None
 
 

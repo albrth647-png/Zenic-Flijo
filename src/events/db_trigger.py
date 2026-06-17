@@ -65,7 +65,8 @@ class DatabaseTrigger:
                 if cursor.fetchone():
                     continue
 
-                # Crear trigger
+                # Crear trigger — table y trigger_name son literals de TABLE_EVENTS (ClassVar hardcoded).
+                # event_name también es literal. B608 es falso positivo.
                 if action == "insert":
                     sql = f"""
                     CREATE TRIGGER IF NOT EXISTS {trigger_name}
@@ -74,7 +75,7 @@ class DatabaseTrigger:
                         INSERT INTO event_queue (event_type, event_data, status)
                         VALUES ('{event_name}', json_object('id', NEW.id), 'pending');
                     END;
-                    """
+                    """  # nosec B608 — identificadores son literals hardcoded
                 elif action == "update":
                     sql = f"""
                     CREATE TRIGGER IF NOT EXISTS {trigger_name}
@@ -83,7 +84,7 @@ class DatabaseTrigger:
                         INSERT INTO event_queue (event_type, event_data, status)
                         VALUES ('{event_name}', json_object('id', NEW.id), 'pending');
                     END;
-                    """
+                    """  # nosec B608 — identificadores son literals hardcoded
                 elif action == "delete":
                     sql = f"""
                     CREATE TRIGGER IF NOT EXISTS {trigger_name}
@@ -92,7 +93,7 @@ class DatabaseTrigger:
                         INSERT INTO event_queue (event_type, event_data, status)
                         VALUES ('{event_name}', json_object('id', OLD.id), 'pending');
                     END;
-                    """
+                    """  # nosec B608 — identificadores son literals hardcoded
 
                 cursor.execute(sql)
                 logger.debug(f"Trigger SQL instalado: {trigger_name}")

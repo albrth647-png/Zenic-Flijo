@@ -15,6 +15,7 @@ import secrets
 
 from src.data.interfaces import DatabaseInterface
 from src.utils.logger import setup_logging
+from src.utils.sql import build_update_query
 
 logger = setup_logging(__name__)
 
@@ -134,19 +135,11 @@ class UserRepository:
             True si se actualizó, False si no había campos válidos
         """
         allowed = {"role", "display_name", "email", "is_active"}
-        set_parts = []
-        params = []
-        for key, value in updates.items():
-            if key in allowed:
-                set_parts.append(f"{key} = ?")
-                params.append(value)
-        if not set_parts:
+        result = build_update_query("users", allowed, updates)
+        if result is None:
             return False
-        params.append(user_id)
-        self._db.execute(
-            "UPDATE users SET " + ", ".join(set_parts) + " WHERE id = ?",
-            tuple(params),
-        )
+        sql, params = result
+        self._db.execute(sql, (*params, user_id))
         self._db.commit()
         return True
 

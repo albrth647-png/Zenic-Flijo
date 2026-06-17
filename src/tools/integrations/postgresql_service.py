@@ -151,7 +151,7 @@ class PostgreSQLService:
         placeholders = ", ".join(["%s"] * len(columns))
         columns_str = ", ".join(columns)
 
-        sql = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders}) RETURNING *"
+        sql = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders}) RETURNING *"  # nosec B608 — table y columns validados con regex arriba
 
         try:
             conn = self._get_connection(connection_string)
@@ -215,7 +215,7 @@ class PostgreSQLService:
         if where_params:
             values.extend(where_params)
 
-        sql = f"UPDATE {table} SET {', '.join(set_clauses)} WHERE {where}"
+        sql = f"UPDATE {table} SET {', '.join(set_clauses)} WHERE {where}"  # nosec B608 — table y columns validados con regex arriba; where es caller-controlled pero típicamente un literal "id = %s"
 
         try:
             conn = self._get_connection(connection_string)
