@@ -106,9 +106,11 @@ class ConditionEvaluator:
 
     def _orbital_retrofeed(self, condition: str, context: dict, result: bool) -> None:
         """Retroalimenta el resultado al OVC compartido."""
-        condition_name = f"cond_{hashlib.md5(condition.encode()).hexdigest()[:8]}"
+        # Hash no criptográfico: identificador determinista para variable orbital (B324 mitigado).
+        condition_name = f"cond_{hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8]}"
         if self._ctx.ovc.get_variable(condition_name) is None:
-            hash_val = int(hashlib.md5(condition.encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista de la condición (B324 mitigado).
+            hash_val = int(hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ctx.ovc.create_variable(
                 name=condition_name,
@@ -159,9 +161,11 @@ class ConditionEvaluator:
                 theta = abs(var_value) % TWO_PI
                 var.amplitude = min(abs(var_value) if var_value != 0 else 1.0, 10.0)
 
-        condition_name = f"cond_{hashlib.md5(condition.encode()).hexdigest()[:8]}"
+        # Hash no criptográfico: identificador determinista para variable orbital (B324 mitigado).
+        condition_name = f"cond_{hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8]}"
         if self._ctx.ovc.get_variable(condition_name) is None:
-            hash_val = int(hashlib.md5(condition.encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista de la condición (B324 mitigado).
+            hash_val = int(hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ctx.ovc.create_variable(
                 name=condition_name,

@@ -331,7 +331,8 @@ class ErrorHandler:
 
     def _ensure_error_variable(self, var_name: str, step_id: int, error_type: str) -> None:
         if self._ctx.ovc.get_variable(var_name) is None:
-            hash_val = int(hashlib.md5(var_name.encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista del var_name (B324 mitigado).
+            hash_val = int(hashlib.md5(var_name.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ctx.ovc.create_variable(
                 name=var_name,
@@ -344,7 +345,8 @@ class ErrorHandler:
 
     def _ensure_context_variable(self, var_name: str, context: dict) -> None:
         if self._ctx.ovc.get_variable(var_name) is None:
-            hash_val = int(hashlib.md5(str(context).encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista del contexto (B324 mitigado).
+            hash_val = int(hashlib.md5(str(context).encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ctx.ovc.create_variable(
                 name=var_name,

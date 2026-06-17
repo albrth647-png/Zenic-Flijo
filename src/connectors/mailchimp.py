@@ -131,7 +131,10 @@ class MailchimpConnector(BaseConnector):
         email = params.get("email", "")
         if not list_id or not email:
             return {"success": False, "error": "Parametros requeridos: list_id, email"}
-        email_hash = hashlib.md5(email.lower().encode()).hexdigest()
+        # MD5 del email exigido por la API de Mailchimp para identificar subscribers.
+        # NO es para fines de seguridad — es el contrato de la API externa.
+        # Ref: https://mailchimp.com/developer/marketing/api/list-members/
+        email_hash = hashlib.md5(email.lower().encode(), usedforsecurity=False).hexdigest()
         payload = {
             "email_address": email,
             "status": params.get("status", "subscribed"),
@@ -151,7 +154,8 @@ class MailchimpConnector(BaseConnector):
         email = params.get("email", "")
         if not list_id or not email:
             return {"success": False, "error": "Parametros requeridos: list_id, email"}
-        email_hash = hashlib.md5(email.lower().encode()).hexdigest()
+        # MD5 del email exigido por la API de Mailchimp (no criptográfico — contrato API).
+        email_hash = hashlib.md5(email.lower().encode(), usedforsecurity=False).hexdigest()
         payload = {k: v for k, v in params.items() if k in ("status", "merge_fields", "tags", "email_address")}
         resp = self._http.patch(f"/lists/{list_id}/members/{email_hash}", json=payload)
         if resp.ok:
@@ -165,7 +169,8 @@ class MailchimpConnector(BaseConnector):
         email = params.get("email", "")
         if not list_id or not email:
             return {"success": False, "error": "Parametros requeridos: list_id, email"}
-        email_hash = hashlib.md5(email.lower().encode()).hexdigest()
+        # MD5 del email exigido por la API de Mailchimp (no criptográfico — contrato API).
+        email_hash = hashlib.md5(email.lower().encode(), usedforsecurity=False).hexdigest()
         resp = self._http.get(f"/lists/{list_id}/members/{email_hash}")
         if resp.ok:
             data = resp.json() or {}

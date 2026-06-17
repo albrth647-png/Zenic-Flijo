@@ -256,7 +256,8 @@ class OrbitalAdapter:
         if self._ovc.get_variable(tool_name) is None:
             import hashlib
 
-            hash_val = int(hashlib.md5(tool_name.encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista del tool_name (B324 mitigado).
+            hash_val = int(hashlib.md5(tool_name.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ovc.create_variable(
                 name=tool_name,

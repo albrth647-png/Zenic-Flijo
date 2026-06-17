@@ -405,7 +405,8 @@ class OrbitalCompiler:
 
     def _deterministic_theta(self, text: str) -> float:
         """Genera una fase determinista a partir de un texto (hash)."""
-        hash_val = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
+        # Hash no criptográfico: deriva fase determinista del texto (B324 mitigado).
+        hash_val = int(hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()[:8], 16)
         return (hash_val % 10000) / 10000.0 * TWO_PI
 
     def _fallback_keyword_match(self, tokens: list[str]) -> str:

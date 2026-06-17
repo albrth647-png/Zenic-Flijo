@@ -22,7 +22,8 @@ def inject_steps_as_orbital(steps: list[dict], ovc) -> None:
         var_name = f"step_{step_id}_{tool}"
 
         try:
-            hash_val = int(hashlib.md5(f"{tool}.{action}".encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista del tool.action (B324 mitigado).
+            hash_val = int(hashlib.md5(f"{tool}.{action}".encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             amplitude = 1.0
             if step.get("condition"):

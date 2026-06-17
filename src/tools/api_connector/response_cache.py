@@ -33,10 +33,12 @@ class ResponseCache:
         self._lock = threading.RLock()
 
     def _make_key(self, method: str, url: str, body: dict | None = None) -> str:
+        # Hash no criptográfico: cache key para responses de API (B324 mitigado).
+        # No es para fines de seguridad — solo para detectar colisiones en cache.
         raw = f"{method.upper()}:{url}"
         if body:
-            raw += f":{hashlib.md5(json.dumps(body, sort_keys=True).encode()).hexdigest()}"
-        return hashlib.md5(raw.encode()).hexdigest()
+            raw += f":{hashlib.md5(json.dumps(body, sort_keys=True).encode(), usedforsecurity=False).hexdigest()}"
+        return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()
 
     def get(self, method: str, url: str, body: dict | None = None) -> dict | None:
         key = self._make_key(method, url, body)

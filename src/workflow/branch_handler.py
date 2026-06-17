@@ -157,7 +157,9 @@ class BranchHandler:
 
         logger.info(f"OrbitalDivergence: Evaluando switch: {expression} = {resolved_expr}")
 
-        expr_var_name = f"switch_{hashlib.md5(str(resolved_expr).encode()).hexdigest()[:8]}"
+        # Hash no criptográfico: genera identificador determinista para variable orbital.
+        # usedforsecurity=False silencia B324 (no es para fines de seguridad).
+        expr_var_name = f"switch_{hashlib.md5(str(resolved_expr).encode(), usedforsecurity=False).hexdigest()[:8]}"
         self._ensure_switch_variable(expr_var_name, str(resolved_expr))
 
         default_case = None
@@ -170,7 +172,8 @@ class BranchHandler:
                 continue
 
             case_value = resolve_variables(str(case.get("value", "")), context)
-            case_var_name = f"case_{hashlib.md5(str(case_value).encode()).hexdigest()[:8]}"
+            # Hash no criptográfico: identificador determinista para variable orbital (B324 mitigado).
+            case_var_name = f"case_{hashlib.md5(str(case_value).encode(), usedforsecurity=False).hexdigest()[:8]}"
             self._ensure_switch_variable(case_var_name, str(case_value))
 
             try:
@@ -202,7 +205,8 @@ class BranchHandler:
 
     def _ensure_context_variable(self, var_name: str, context: dict) -> None:
         if self._ctx.ovc.get_variable(var_name) is None:
-            hash_val = int(hashlib.md5(str(context).encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista del contexto (B324 mitigado).
+            hash_val = int(hashlib.md5(str(context).encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ctx.ovc.create_variable(
                 name=var_name,
@@ -216,7 +220,8 @@ class BranchHandler:
     def _ensure_branch_variable(self, var_name: str, branch: dict) -> None:
         if self._ctx.ovc.get_variable(var_name) is None:
             condition = branch.get("condition", "True")
-            hash_val = int(hashlib.md5(condition.encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista de la condición (B324 mitigado).
+            hash_val = int(hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ctx.ovc.create_variable(
                 name=var_name,
@@ -229,7 +234,8 @@ class BranchHandler:
 
     def _ensure_switch_variable(self, var_name: str, value: str) -> None:
         if self._ctx.ovc.get_variable(var_name) is None:
-            hash_val = int(hashlib.md5(value.encode()).hexdigest()[:8], 16)
+            # Hash no criptográfico: deriva theta determinista del valor (B324 mitigado).
+            hash_val = int(hashlib.md5(value.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             theta = (hash_val % 1000) / 1000.0 * TWO_PI
             self._ctx.ovc.create_variable(
                 name=var_name,
