@@ -55,6 +55,11 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 # ── Token Helpers ──────────────────────────────────────────────
 
+# Cache del secret en modo dev para que generate_token/validate_token usen
+# el mismo valor dentro de una sesión. En producción el secret viene de env
+# var y el cache es estable.
+_CACHED_DEV_SECRET: str | None = None
+
 
 def _get_jwt_secret() -> str:
     """Obtiene el secreto JWT desde la variable de entorno.
@@ -66,12 +71,17 @@ def _get_jwt_secret() -> str:
     atacante con acceso al código forjar tokens JWT).
 
     En desarrollo (WFD_PRODUCTION != "true"), si no está configurado se
-    genera uno aleatorio por sesión y se emite un warning.
+    genera uno aleatorio por sesión (cacheado para que generate_token y
+    validate_token usen el mismo valor) y se emite un warning.
     """
+    global _CACHED_DEV_SECRET
+
     secret = os.environ.get(_JWT_SECRET_ENV, "")
     production = os.environ.get("WFD_PRODUCTION", "false").lower() == "true"
 
     if secret and len(secret) >= _JWT_SECRET_MIN_LEN:
+        # Secret válido configurado vía env var — usarlo siempre (sin cachear
+        # porque podría cambiar en runtime en tests).
         return secret
 
     if production:
@@ -82,11 +92,15 @@ def _get_jwt_secret() -> str:
             "y configúrelo en su entorno antes de desplegar."
         )
 
-    # Modo desarrollo: generar uno aleatorio efímero y avisar.
+    # Modo desarrollo: usar el secret cacheado si existe (estabilidad
+    # dentro de la sesión). Si no, generar uno nuevo y cachearlo.
+    if _CACHED_DEV_SECRET is not None:
+        return _CACHED_DEV_SECRET
+
     if not secret:
         import secrets as _secrets
         import warnings
-        secret = _secrets.token_urlsafe(48)
+        _CACHED_DEV_SECRET = _secrets.token_urlsafe(48)
         warnings.warn(
             "WFD_API_V2_JWT_SECRET no configurado. Se generó un secreto aleatorio "
             "efímero para esta sesión. NO use esto en producción. Configure la "
@@ -94,7 +108,7 @@ def _get_jwt_secret() -> str:
             f"al menos {_JWT_SECRET_MIN_LEN} caracteres.",
             stacklevel=2,
         )
-        return secret
+        return _CACHED_DEV_SECRET
 
     # Secret configurado pero demasiado corto — advertir pero permitir en dev.
     import warnings
