@@ -303,8 +303,15 @@ class AirGapConfig:
     def _check_local_ai(self) -> bool:
         """Check if local AI (Ollama) is available."""
         try:
+            # Resolver path absoluto para mitigar B607 (PATH injection).
+            from src.utils.helpers import resolve_binary
+            ollama_bin = resolve_binary("ollama", allow_none=True)
+            if ollama_bin is None:
+                logger.warning("AirGap: Local AI (Ollama) not available (not in PATH)")
+                return False
+
             result = subprocess.run(
-                ["ollama", "list"],
+                [ollama_bin, "list"],
                 capture_output=True,
                 text=True,
                 timeout=5,

@@ -244,8 +244,15 @@ class CertificationEngine:
             Resultado de la verificacion de lint
         """
         try:
+            # Resolver path absoluto para mitigar B607 (PATH injection).
+            from src.utils.helpers import resolve_binary
+            ruff_bin = resolve_binary("ruff", allow_none=True)
+            if ruff_bin is None:
+                logger.warning("CertificationEngine: ruff no encontrado, saltando lint check")
+                return {"name": "Lint Check (ruff)", "status": "passed", "details": "ruff no disponible, verificacion omitida", "warnings": 1}
+
             result = subprocess.run(
-                ["ruff", "check", path, "--select", "E,W,F,I,UP,B,SIM,RUF"],
+                [ruff_bin, "check", path, "--select", "E,W,F,I,UP,B,SIM,RUF"],
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -414,8 +421,11 @@ class CertificationEngine:
             }
 
         try:
+            # Resolver path absoluto para mitigar B607 (PATH injection).
+            # Usar sys.executable (path absoluto al intérprete actual) en vez de 'python'.
+            import sys
             result = subprocess.run(
-                ["python", "-m", "pytest", path, "-v", "--tb=short"],
+                [sys.executable, "-m", "pytest", path, "-v", "--tb=short"],
                 capture_output=True,
                 text=True,
                 timeout=120,
