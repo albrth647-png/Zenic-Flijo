@@ -142,7 +142,9 @@ export default function ChatPage() {
             {
               id: `assistant-${Date.now()}`,
               role: "assistant",
-              content: data.error,
+              // data.error es string | undefined; ya validamos que existe con el if,
+              // pero TS no lo infiere dentro del callback. Usamos ?? para garantizar string.
+              content: data.error ?? "Error desconocido al generar el workflow",
               mode: "generate",
             },
           ])

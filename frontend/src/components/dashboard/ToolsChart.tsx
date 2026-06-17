@@ -74,7 +74,9 @@ export function ToolsChart({ data }: ToolsChartProps) {
             fontSize: "12px",
           }}
           labelStyle={{ color: textColor }}
-          formatter={(value: number) => [value, "Ejecuciones"]}
+          // Recharts v3 cambió la firma del formatter: ahora recibe (value, name, item, index, payload).
+          // Sin tipar explícito, TS infiere los tipos correctos desde el componente Tooltip.
+          formatter={(value) => [String(value), "Ejecuciones"]}
         />
         <Bar
           dataKey="count"
@@ -85,7 +87,8 @@ export function ToolsChart({ data }: ToolsChartProps) {
             position: "right",
             fill: textColor,
             fontSize: 10,
-            formatter: (value: number) => value,
+            // En label de Bar, formatter recibe el valor y debe retornar ReactNode.
+            formatter: (value: unknown) => String(value),
           }}
         />
       </BarChart>

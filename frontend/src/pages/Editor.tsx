@@ -33,6 +33,7 @@ import { TOOL_ACTIONS } from "@/types/workflow"
 import type {
   Workflow,
   WorkflowNode,
+  WorkflowEdge,
   TriggerNodeData,
   ActionNodeData,
 } from "@/types/workflow"
@@ -58,7 +59,7 @@ function Editor() {
   const { screenToFlowPosition } = useReactFlow()
 
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>([])
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null)
   const [name, setName] = useState("")
   const [dirty, setDirty] = useState(false) // tracks unsaved changes
@@ -120,17 +121,19 @@ function Editor() {
   // ── Add edge on connection ──────────────────────────────
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...connection,
-            type: "smoothstep",
-            animated: true,
-            style: { stroke: "#6366f1", strokeWidth: 2 },
-          },
-          eds
-        )
-      )
+      // addEdge espera Edge (que incluye id, type, style...), no solo Connection.
+      // Construimos el Edge completo con id único + estilo visual.
+      const newEdge: WorkflowEdge = {
+        id: `edge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: connection.sourceHandle ?? undefined,
+        targetHandle: connection.targetHandle ?? undefined,
+        type: "smoothstep",
+        animated: true,
+        style: { stroke: "#6366f1", strokeWidth: 2 },
+      }
+      setEdges((eds) => addEdge(newEdge, eds))
     },
     [setEdges]
   )
@@ -199,7 +202,10 @@ function Editor() {
   // ── Select node ─────────────────────────────────────────
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      setSelectedNode(node as WorkflowNode)
+      // Cast doble vía unknown: React Flow emite Node (con data: Record<string, unknown>)
+      // pero nuestros nodos son WorkflowNode (con data: WorkflowNodeData).
+      // El cast es seguro porque el editor solo crea nodos WorkflowNode.
+      setSelectedNode(node as unknown as WorkflowNode)
       setShowConfig(true)
     },
     []
@@ -365,8 +371,11 @@ function Editor() {
           </div>
         </div>
 
-        {/* React Flow canvas */}
-        <ReactFlow
+        {/* React Flow canvas.
+            Los genéricos <WorkflowNode, WorkflowEdge> le dicen a React Flow v12
+            los tipos concretos de nodos y edges, para que todos los props
+            (nodes, edges, onNodesChange, nodeTypes, etc.) se tipen correctamente. */}
+        <ReactFlow<WorkflowNode, WorkflowEdge>
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}

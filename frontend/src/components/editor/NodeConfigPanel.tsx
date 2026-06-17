@@ -28,10 +28,14 @@ interface NodeConfigPanelProps {
 export function NodeConfigPanel({ node, onClose, onDelete }: NodeConfigPanelProps) {
   const { updateNodeData, deleteElements } = useReactFlow()
 
+  // Actualiza los datos del nodo. Acepta un Partial del tipo data y lo pasa
+  // a updateNodeData (que internamente espera Record<string, unknown>).
+  // El index signature en TriggerNodeData/ActionNodeData garantiza que son
+  // compatibles con Record<string, unknown>.
   const updateData = useCallback(
-    <T extends Record<string, unknown>>(data: Partial<T>) => {
+    (data: Partial<TriggerNodeData> | Partial<ActionNodeData>) => {
       if (!node) return
-      updateNodeData(node.id, data)
+      updateNodeData(node.id, data as Record<string, unknown>)
     },
     [node, updateNodeData]
   )
@@ -69,12 +73,12 @@ export function NodeConfigPanel({ node, onClose, onDelete }: NodeConfigPanelProp
           {node.data.nodeType === "trigger" ? (
             <TriggerConfig
               data={node.data as TriggerNodeData}
-              onChange={(d) => updateData<TriggerNodeData>(d)}
+              onChange={(d) => updateData(d)}
             />
           ) : (
             <ActionConfig
               data={node.data as ActionNodeData}
-              onChange={(d) => updateData<ActionNodeData>(d)}
+              onChange={(d) => updateData(d)}
             />
           )}
         </div>
