@@ -25,8 +25,12 @@ import {
 } from "lucide-react"
 
 import type { Lead, StageCounts } from "@/types/crm"
+import { STAGES } from "@/types/crm"
 
-// ── Constantes ────────────────────────────── = ["new", "contacted", "qualified", "proposal", "negotiation", "closed_won", "closed_lost"]
+// ── Constantes ──────────────────────────────
+
+// STAGES se importa desde @/types/crm (single source of truth).
+// Esto evita el drift entre el frontend y el backend tools/crm/service.py:STAGES.
 
 const STAGE_LABELS: Record<string, string> = {
   new: "Nuevo",
