@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zenic-flujo.fullname" . }}-config
+  labels:
+    {{- include "zenic-flujo.labels" . | nindent 4 }}
+data:
+  WFD_PRODUCTION: {{ .Values.config.WFD_PRODUCTION | quote }}
+  WFD_WEB_HOST: {{ .Values.config.WFD_WEB_HOST | quote }}
+  WFD_WEB_PORT: {{ .Values.config.WFD_WEB_PORT | quote }}
+  WFD_WEBHOOK_PORT: {{ .Values.config.WFD_WEBHOOK_PORT | quote }}
+  WFD_LOG_LEVEL: {{ .Values.config.WFD_LOG_LEVEL | quote }}
+  WFD_DATA_DIR: {{ .Values.config.WFD_DATA_DIR | quote }}
+  WFD_OLLAMA_ENABLED: {{ .Values.config.WFD_OLLAMA_ENABLED | quote }}
+  WFD_OLLAMA_URL: {{ .Values.config.WFD_OLLAMA_URL | quote }}
+  WFD_OLLAMA_MODEL: {{ .Values.config.WFD_OLLAMA_MODEL | quote }}
+
+  {{- if .Values.externalServices.postgres.enabled }}
+  WFD_POSTGRES_URL: {{ include "zenic-flujo.postgresUrl" . | quote }}
+  {{- end }}
+  {{- if .Values.externalServices.redis.enabled }}
+  WFD_REDIS_URL: {{ include "zenic-flujo.redisUrl" . | quote }}
+  {{- end }}
+  {{- if .Values.externalServices.mongodb.enabled }}
+  WFD_MONGODB_URI: {{ .Values.externalServices.mongodb.uri | quote }}
+  {{- end }}
