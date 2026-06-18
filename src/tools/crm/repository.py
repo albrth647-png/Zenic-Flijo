@@ -23,11 +23,12 @@ class CRMRepository:
         source: str = "manual",
         notes: str | None = None,
         user_id: int | None = None,
+        stage: str = "new",
     ) -> dict:
         cursor = self._db.execute(
             """INSERT INTO leads (name, email, phone, company, source, notes, stage, user_id)
-               VALUES (?, ?, ?, ?, ?, ?, 'new', ?)""",
-            (name, email, phone, company, source, notes, user_id or 1),
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, email, phone, company, source, notes, stage, user_id or 1),
         )
         self._db.commit()
         return self.get_lead(cursor.lastrowid)

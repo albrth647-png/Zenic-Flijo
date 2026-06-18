@@ -26,8 +26,9 @@ class CRMService:
         source: str = "manual",
         notes: str | None = None,
         user_id: int | None = None,
+        stage: str = "new",
     ) -> dict:
-        lead = self._repo.create_lead(name, email, phone, company, source, notes, user_id)
+        lead = self._repo.create_lead(name, email, phone, company, source, notes, user_id, stage)
         self._event_bus.publish("crm.lead.created", dict(lead))
         logger.info(f"Lead creado: {lead.get('name')} (ID: {lead.get('id')})")
         return lead
