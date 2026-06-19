@@ -92,7 +92,9 @@ class LoopHandler:
             logger.warning(f"Coleccion truncada de {len(collection)} a {max_iter} iteraciones")
             collection = collection[:max_iter]
 
-        loop_var_name = f"loop_{step.get('id', 0)}_foreach"
+        # Fix BUG-W7: usar prefijo de execution_id para aislar workflows
+        orbital_prefix = context.get("_orbital_var_prefix", "")
+        loop_var_name = f"{orbital_prefix}loop_{step.get('id', 0)}_foreach"
         self._ensure_loop_variable(loop_var_name, step)
 
         outputs = []
@@ -126,7 +128,9 @@ class LoopHandler:
         inner_steps = step.get("steps", [])
         max_iter = step.get("max_iterations", self.MAX_ITERATIONS_DEFAULT)
 
-        loop_var_name = f"loop_{step.get('id', 0)}_for"
+        # Fix BUG-W7: usar prefijo de execution_id
+        orbital_prefix = context.get("_orbital_var_prefix", "")
+        loop_var_name = f"{orbital_prefix}loop_{step.get('id', 0)}_for"
         self._ensure_loop_variable(loop_var_name, step)
 
         count = 0
@@ -166,11 +170,13 @@ class LoopHandler:
         inner_steps = step.get("steps", [])
         max_iter = step.get("max_iterations", self.MAX_ITERATIONS_DEFAULT)
 
-        loop_var_name = f"loop_{step.get('id', 0)}_while"
+        # Fix BUG-W7: usar prefijo de execution_id + filtrar variables por prefijo
+        orbital_prefix = context.get("_orbital_var_prefix", "")
+        loop_var_name = f"{orbital_prefix}loop_{step.get('id', 0)}_while"
         self._ensure_loop_variable(loop_var_name, step)
 
-        # Registrar ciclo si hay suficientes variables en el OVC compartido
-        all_vars = list(self._ctx.ovc.get_all_variables().keys())
+        # Fix BUG-W7: filtrar variables por prefijo para no mezclar workflows ajenos
+        all_vars = [n for n in self._ctx.ovc.get_all_variables().keys() if n.startswith(orbital_prefix)]
         if len(all_vars) >= 2:
             try:
                 from src.orbital.models import CicloOrbital

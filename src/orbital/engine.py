@@ -328,18 +328,20 @@ class OrbitalEngine:
     # ── Reset ──────────────────────────────────────────────
 
     def reset(self) -> None:
-        """Reinicia completamente el motor ORBITAL."""
+        """Reinicia el motor ORBITAL sin recrear los pilares.
+
+        Fix BUG-W5: antes se recreaban TOR/RCC/COD/Espectro con nuevas instancias,
+        pero los callers externos (OrbitalContext) seguían apuntando a las viejas.
+        Ahora solo se resetean los pilares existentes, preservando referencias.
+        """
         self._ovc.reset()
-        self._espectro.reset()
+        if hasattr(self._tor, 'clear_cache'):
+            self._tor.clear_cache()
+        if hasattr(self._espectro, 'reset'):
+            self._espectro.reset()
         self._global_tick = 0
         self._execution_history.clear()
-        # Recrear TOR, RCC, COD con el OVC reseteado (compartido)
-        self._tor = TOR(self._ovc)
-        self._rcc = RCC(self._ovc, self._tor)
-        self._cod = COD(self._ovc, self._tor, self._rcc)
-        self._espectro = EspectroOrbital(self._ovc, self._tor, self._rcc, self._cod)
-        self._owns_pillars = True  # Ahora somos duenos de las nuevas instancias
-        logger.info("OrbitalEngine: Reset completo")
+        logger.info("OrbitalEngine: Reset completo (pilares preservados)")
 
     # ── Representacion ─────────────────────────────────────
 

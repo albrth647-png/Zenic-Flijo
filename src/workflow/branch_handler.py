@@ -52,8 +52,11 @@ class BranchHandler:
 
         logger.info(f"OrbitalDivergence: Evaluando branch con {len(branches)} ramas")
 
+        # Fix BUG-W8: usar prefijo de execution_id para aislar workflows
+        orbital_prefix = context.get("_orbital_var_prefix", "")
+
         # 1. Crear variable orbital para el contexto
-        context_var_name = f"branch_ctx_{step.get('id', 0)}"
+        context_var_name = f"{orbital_prefix}branch_ctx_{step.get('id', 0)}"
         self._ensure_context_variable(context_var_name, context)
 
         # 2. Crear variables orbitales para cada rama y calcular TOR
@@ -62,7 +65,7 @@ class BranchHandler:
             branch_name = branch.get("name", "unnamed")
             condition = branch.get("condition", "True")
 
-            branch_var_name = f"branch_{step.get('id', 0)}_{branch_name}"
+            branch_var_name = f"{orbital_prefix}branch_{step.get('id', 0)}_{branch_name}"
             self._ensure_branch_variable(branch_var_name, branch)
 
             tor_value = 0.0
@@ -164,9 +167,12 @@ class BranchHandler:
 
         logger.info(f"OrbitalDivergence: Evaluando switch: {expression} = {resolved_expr}")
 
+        # Fix BUG-W8: usar prefijo de execution_id
+        orbital_prefix = context.get("_orbital_var_prefix", "")
+
         # Hash no criptográfico: genera identificador determinista para variable orbital.
         # usedforsecurity=False silencia B324 (no es para fines de seguridad).
-        expr_var_name = f"switch_{hashlib.md5(str(resolved_expr).encode(), usedforsecurity=False).hexdigest()[:8]}"
+        expr_var_name = f"{orbital_prefix}switch_{hashlib.md5(str(resolved_expr).encode(), usedforsecurity=False).hexdigest()[:8]}"
         self._ensure_switch_variable(expr_var_name, str(resolved_expr))
 
         default_case = None
@@ -180,7 +186,7 @@ class BranchHandler:
 
             case_value = resolve_variables(str(case.get("value", "")), context)
             # Hash no criptográfico: identificador determinista para variable orbital (B324 mitigado).
-            case_var_name = f"case_{hashlib.md5(str(case_value).encode(), usedforsecurity=False).hexdigest()[:8]}"
+            case_var_name = f"{orbital_prefix}case_{hashlib.md5(str(case_value).encode(), usedforsecurity=False).hexdigest()[:8]}"
             self._ensure_switch_variable(case_var_name, str(case_value))
 
             try:

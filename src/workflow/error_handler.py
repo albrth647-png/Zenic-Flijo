@@ -129,13 +129,16 @@ class ErrorHandler:
                 retries=0,
             )
 
+        # Fix BUG-W8: usar prefijo de execution_id para aislar workflows
+        orbital_prefix = context.get("_orbital_var_prefix", "")
+
         # 1. Crear variable orbital para el error
-        error_var_name = f"error_{step_id}_{error_type}"
+        error_var_name = f"{orbital_prefix}error_{step_id}_{error_type}"
         self._ensure_error_variable(error_var_name, step_id, error_type)
 
         # 2. Calcular TOR(error, contexto)
         orbital_alignment = 0.0
-        context_var_name = f"ctx_{step_id}"
+        context_var_name = f"{orbital_prefix}ctx_{step_id}"
         self._ensure_context_variable(context_var_name, context)
 
         try:

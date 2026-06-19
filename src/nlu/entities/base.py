@@ -8,6 +8,7 @@ Misma entrada → siempre misma salida.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -82,3 +83,18 @@ class CompileResult:
     explanation: str  # en lenguaje natural
     missing_slots: tuple[str, ...]  # si hay → clarificación necesaria
     status: str  # 'ready' | 'needs_clarification' | 'ambiguous' | 'unknown'
+    # Fix B-01: NLUResult propagado para que FallbackOrchestrator pueda inspeccionar
+    # los intents sin caer al Nivel 2 (ORBITAL) por type confusion.
+    # El campo es opcional y default=None para retrocompatibilidad con los tests existentes.
+    nlu_result: Optional["NLUResult"] = None
+
+    def __repr__(self) -> str:
+        # Repr custom que NO incluye nlu_result.text (PII del usuario).
+        # Solo exponer metadata útil para debugging sin leakear texto original.
+        intents_count = len(self.nlu_result.intents) if self.nlu_result else 0
+        return (
+            f"CompileResult(status={self.status!r}, "
+            f"missing_slots={self.missing_slots!r}, "
+            f"intents_count={intents_count}, "
+            f"workflow_keys={list(self.workflow.keys())!r})"
+        )

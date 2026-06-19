@@ -351,7 +351,10 @@ class Pipeline:
             lang: Idioma forzado (auto-detect si None)
 
         Returns:
-            CompileResult con workflow, explanation y status
+            CompileResult con workflow, explanation, status y nlu_result.
+            El campo nlu_result (propagado desde la etapa 1) expone los
+            intents detectados para que FallbackOrchestrator pueda decidir
+            si activar el Nivel 2 (ORBITAL) sin reconstruir el NLUResult.
         """
         # Etapas 1-6: NLU analysis
         nlu_result = self.process(text, lang)
@@ -369,6 +372,7 @@ class Pipeline:
                 ),
                 missing_slots=(),
                 status="unknown",
+                nlu_result=nlu_result,  # Fix B-01
             )
 
         # ── Caso: score 0.0 = ninguna keyword matcheo ─────
@@ -381,6 +385,7 @@ class Pipeline:
                 ),
                 missing_slots=(),
                 status="unknown",
+                nlu_result=nlu_result,  # Fix B-01
             )
 
         # ── Caso: ambigüedad entre múltiples intenciones ──
@@ -393,6 +398,7 @@ class Pipeline:
                 ),
                 missing_slots=(),
                 status="ambiguous",
+                nlu_result=nlu_result,  # Fix B-01
             )
 
         # ── Caso normal: compilar workflow ─────────────────
@@ -412,6 +418,7 @@ class Pipeline:
                 explanation=explanation,
                 missing_slots=compile_result.missing_slots,
                 status="needs_clarification",
+                nlu_result=nlu_result,  # Fix B-01
             )
 
         # Etapa 10: Validator
@@ -423,6 +430,7 @@ class Pipeline:
                 explanation=f"Errores de validación: {errors_str}",
                 missing_slots=compile_result.missing_slots,
                 status="validation_error",
+                nlu_result=nlu_result,  # Fix B-01
             )
 
         # Etapa 11: Explainer
@@ -433,6 +441,7 @@ class Pipeline:
             explanation=explanation,
             missing_slots=(),
             status="ready",
+            nlu_result=nlu_result,  # Fix B-01
         )
 
     def compile_with_guardrails(

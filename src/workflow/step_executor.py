@@ -117,7 +117,9 @@ class StepExecutor:
         logger.info(f"Ejecutando paso {step_id}: {tool_name}.{action} (timeout: {timeout}s)")
 
         # 1. Registrar paso como variable orbital (en OVC compartido)
-        var_name = f"step_{step_id}_{tool_name}"
+        # Fix BUG-W6: usar prefijo de execution_id para aislar workflows concurrentes
+        orbital_prefix = context.get("_orbital_var_prefix", "")
+        var_name = f"{orbital_prefix}step_{step_id}_{tool_name}"
         self._ensure_step_variable(var_name, step)
 
         # 2. Calcular tension con paso anterior

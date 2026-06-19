@@ -106,8 +106,10 @@ class ConditionEvaluator:
 
     def _orbital_retrofeed(self, condition: str, context: dict, result: bool) -> None:
         """Retroalimenta el resultado al OVC compartido."""
+        # Fix BUG-W8: usar prefijo de execution_id para aislar workflows
+        orbital_prefix = context.get("_orbital_var_prefix", "")
         # Hash no criptográfico: identificador determinista para variable orbital (B324 mitigado).
-        condition_name = f"cond_{hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8]}"
+        condition_name = f"{orbital_prefix}cond_{hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8]}"
         if self._ctx.ovc.get_variable(condition_name) is None:
             # Hash no criptográfico: deriva theta determinista de la condición (B324 mitigado).
             hash_val = int(hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8], 16)
@@ -130,6 +132,8 @@ class ConditionEvaluator:
 
     def _evaluate_orbital(self, condition: str, context: dict) -> bool | None:
         """Evalua una condicion usando resonancia orbital (OVC compartido)."""
+        # Fix BUG-W8: usar prefijo de execution_id para aislar workflows
+        orbital_prefix = context.get("_orbital_var_prefix", "")
         numeric_vars = {}
         for key, value in context.items():
             if isinstance(value, (int, float)):
@@ -143,7 +147,7 @@ class ConditionEvaluator:
             return None
 
         for var_name, var_value in numeric_vars.items():
-            orbital_name = f"ctx_{var_name}"
+            orbital_name = f"{orbital_prefix}ctx_{var_name}"
             if self._ctx.ovc.get_variable(orbital_name) is None:
                 theta = abs(var_value) % TWO_PI
                 amplitude = abs(var_value) if var_value != 0 else 1.0
@@ -161,8 +165,8 @@ class ConditionEvaluator:
                 theta = abs(var_value) % TWO_PI
                 var.amplitude = min(abs(var_value) if var_value != 0 else 1.0, 10.0)
 
-        # Hash no criptográfico: identificador determinista para variable orbital (B324 mitigado).
-        condition_name = f"cond_{hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8]}"
+        # Fix BUG-W8: usar prefijo de execution_id
+        condition_name = f"{orbital_prefix}cond_{hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8]}"
         if self._ctx.ovc.get_variable(condition_name) is None:
             # Hash no criptográfico: deriva theta determinista de la condición (B324 mitigado).
             hash_val = int(hashlib.md5(condition.encode(), usedforsecurity=False).hexdigest()[:8], 16)
@@ -183,7 +187,7 @@ class ConditionEvaluator:
         total_alignment = 0.0
         count = 0
         for var_name in numeric_vars:
-            orbital_name = f"ctx_{var_name}"
+            orbital_name = f"{orbital_prefix}ctx_{var_name}"
             try:
                 tor_result = self._ctx.tor.calculate(condition_name, orbital_name)
                 total_alignment += tor_result.tor_value
