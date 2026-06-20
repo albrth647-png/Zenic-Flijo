@@ -18,7 +18,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -245,7 +245,7 @@ class CertificationEngine:
         """
         try:
             # Resolver path absoluto para mitigar B607 (PATH injection).
-            from src.utils.helpers import resolve_binary
+            from src.core.utils import resolve_binary
             ruff_bin = resolve_binary("ruff", allow_none=True)
             if ruff_bin is None:
                 logger.warning("CertificationEngine: ruff no encontrado, saltando lint check")

@@ -713,7 +713,7 @@ class TestAuthStatusAPI:
         """Test: POST /api/auth/login sin hash configurado retorna 401."""
         client, _ = app_client
         # Remove the password hash temporarily
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
         from src.web import app as app_module
 
         # Delete the setting from DB directly

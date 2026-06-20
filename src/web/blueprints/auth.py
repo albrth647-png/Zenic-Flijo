@@ -4,10 +4,10 @@ Blueprints — Auth, Dashboard, License y System API
 
 from flask import Blueprint, jsonify, request, session
 
-from src.config import FREE_TIER_ALLOWED_TOOLS, FREE_TIER_MAX_WORKFLOWS
-from src.data.audit_repository import AuditRepository
-from src.data.settings_repository import SettingsRepository
-from src.data.user_repository import UserRepository
+from src.core.config import FREE_TIER_ALLOWED_TOOLS, FREE_TIER_MAX_WORKFLOWS
+from src.core.repositories.audit_repository import AuditRepository
+from src.core.repositories.settings_repository import SettingsRepository
+from src.core.repositories.user_repository import UserRepository
 from src.license.validator import LicenseValidator
 from src.schemas import (
     AuthStatusResponse,
@@ -17,7 +17,7 @@ from src.schemas import (
     LoginResponse,
     StatusResponse,
 )
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.web.helpers import _check_rate_limit, _register_failed_login, db, login_required, repo, require_role
 
 users = UserRepository()
@@ -27,6 +27,24 @@ settings = SettingsRepository()
 logger = setup_logging(__name__)
 
 bp = Blueprint("auth", __name__)
+
+
+# ── Metrics helper (M10.4) ──────────────────────────────────
+
+def _record_login_metric(username: str, success: bool, method: str = "password") -> None:
+    """Registra un intento de login en TelemetryService (best-effort).
+
+    Métricas NUNCA deben romper el flujo de autenticación.
+    """
+    try:
+        from src.core.observability.telemetry import TelemetryService
+        TelemetryService().record_login_attempt(
+            username=username,
+            status="success" if success else "failed",
+            method=method,
+        )
+    except Exception:
+        pass  # metrics are best-effort
 
 
 # ── Helpers de verificación de contraseña ───────────────────
@@ -82,19 +100,23 @@ def api_login():
                 session["role"] = "admin"
                 session.permanent = True
                 audit.log("login.success", f"Login legacy: {username}", ip, 1)
+                _record_login_metric(username, success=True)
                 return jsonify(LoginResponse(status="ok", user=username).model_dump())
         _register_failed_login(ip)
         audit.log("login.failed", f"Intento fallido para {username}", ip)
+        _record_login_metric(username, success=False)
         return jsonify(ErrorResponse(error="auth_error", message="Credenciales invalidas").model_dump()), 401
 
     if not user.get("is_active", 1):
         _register_failed_login(ip)
+        _record_login_metric(username, success=False)
         return jsonify(ErrorResponse(error="user_disabled", message="Usuario desactivado").model_dump()), 403
 
     valid = _verify_password(password, user["password_hash"])
     if not valid:
         _register_failed_login(ip)
         audit.log("login.failed", f"Intento fallido para {username}", ip, user["id"])
+        _record_login_metric(username, success=False)
         return jsonify(ErrorResponse(error="auth_error", message="Credenciales invalidas").model_dump()), 401
 
     session["user"] = username
@@ -104,12 +126,24 @@ def api_login():
     audit.log("login.success", f"Login exitoso: {username}", ip, user["id"])
     db.execute("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", (user["id"],))
     db.commit()
+    _record_login_metric(username, success=True)
     return jsonify(LoginResponse(status="ok", user=username, role=user["role"]).model_dump())
 
 
 @bp.route("/api/auth/register", methods=["POST"])
+@login_required
+@require_role("admin")  # M10.3: solo admin puede registrar nuevos usuarios.
+# Antes este endpoint era público y permitía self-signup, lo que abría la puerta
+# a creación arbitraria de cuentas. Ahora requiere sesión admin activa.
+# Para crear usuarios en flujos self-service, usar el endpoint admin dedicado
+# /api/users (POST) que ya tiene @require_role("admin").
 def api_register():
-    """Register a new user account."""
+    """Register a new user account.
+
+    M10.3: Endpoint cerrado a admins. Antes era público y permitía
+    self-registration, lo que era un vector de abuso (creación masiva
+    de cuentas, spam, escalada de superficie de ataque).
+    """
     data = request.get_json() or {}
     username = data.get("username", "")
     password = data.get("password", "")
@@ -251,7 +285,7 @@ def api_license_info():
 @login_required
 @require_role("admin")
 def api_system_backup():
-    from src.data.backup_engine import BackupEngine
+    from src.core.db.backup_engine import BackupEngine
     be = BackupEngine()
     path = be.backup_now()
     return jsonify({"path": path, "status": "completed"})  # Return dict directly (dynamic path)

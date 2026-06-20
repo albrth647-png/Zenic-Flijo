@@ -15,8 +15,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.agents.orchestrator import MultiAgentOrchestrator
-from src.hat.api.routes import router as hat_router
+from src.hat.agents_legacy.orchestrator import MultiAgentOrchestrator
+from src.hat.level1_orchestrator.api.routes import router as hat_router
 from src.orbital.context import OrbitalContext
 
 

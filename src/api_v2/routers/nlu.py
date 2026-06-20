@@ -33,7 +33,7 @@ from src.api_v2.models import (
     NLUUnderstandRequest,
     NLUUnderstandResponse,
 )
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

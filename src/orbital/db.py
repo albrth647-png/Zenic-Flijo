@@ -22,7 +22,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -129,7 +129,7 @@ class OrbitalDB:
             db_path: Ruta al archivo SQLite. Si es None, usa la config global.
         """
         if db_path is None:
-            from src.config import DB_PATH
+            from src.core.config import DB_PATH
 
             db_path = DB_PATH
 

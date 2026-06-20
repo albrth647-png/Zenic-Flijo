@@ -26,14 +26,14 @@ from typing import Any
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
-from src.data.audit_repository import AuditRepository
-from src.data.database_manager import DatabaseManager
-from src.data.redis_service import RedisService
-from src.data.settings_repository import SettingsRepository
-from src.data.user_repository import UserRepository
-from src.security.rbac import RBACManager
+from src.core.repositories import AuditRepository
+from src.core.db import DatabaseManager
+from src.core.db import RedisService
+from src.core.repositories import SettingsRepository
+from src.core.repositories import UserRepository
+from src.core.security.rbac import RBACManager
 from src.tenant.service import TenantService
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -435,7 +435,7 @@ def require_permission(resource: str, action: str):
     Usage:
         @router.post("/", dependencies=[Depends(require_permission("workflow", "create"))])
     """
-    from src.security.auth_shared import has_permission
+    from src.core.security.auth_shared import has_permission
 
     async def _check_permission(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
         """Verifica si el usuario tiene el permiso especificado.

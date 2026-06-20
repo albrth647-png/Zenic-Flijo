@@ -210,11 +210,11 @@ def setup_default_container() -> None:
         return  # Ya inicializado
 
     # ── Data layer ────────────────────────────────────────────
-    from src.data.database_manager import DatabaseManager
+    from src.core.db import DatabaseManager
 
     container.register("db", lambda: DatabaseManager())
 
-    from src.data.redis_service import RedisService
+    from src.core.db import RedisService
 
     container.register("redis", lambda: RedisService())
 
@@ -244,11 +244,11 @@ def setup_default_container() -> None:
     container.register("promotion_service", lambda: PromotionService())
 
     # ── Observability (Sprint 11) ─────────────────────────────
-    from src.observability.alerts import AlertService
+    from src.core.observability.alerts import AlertService
 
     container.register("alert_service", lambda: AlertService())
 
     # ── Security ──────────────────────────────────────────────
-    from src.security.rbac import RBACManager
+    from src.core.security.rbac import RBACManager
 
     container.register("rbac_manager", lambda: RBACManager())

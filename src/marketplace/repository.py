@@ -13,9 +13,9 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from src.data.marketplace_db import MarketplaceDBManager
-from src.utils.logger import setup_logging
-from src.utils.sql import build_update_query
+from src.core.db import MarketplaceDBManager
+from src.core.logging import setup_logging
+from src.core.db import build_update_query
 
 logger = setup_logging(__name__)
 

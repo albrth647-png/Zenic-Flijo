@@ -14,13 +14,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.agents.base import AgentConfig, AgentState, BaseAgent
-from src.agents.orchestrator import (
+from src.hat.agents_legacy.base import AgentConfig, AgentState, BaseAgent
+from src.hat.agents_legacy.orchestrator import (
     MultiAgentOrchestrator,
     OrchestrationPlan,
 )
-from src.agents.runtime import AgentRuntime
-from src.agents.token_tracking import TokenCostTracker
+from src.hat.agents_legacy.runtime import AgentRuntime
+from src.core.observability.token_tracking import TokenCostTracker
 from src.api_v2.dependencies import require_permission
 
 router = APIRouter(prefix="/api/v2/agents", tags=["agents"])

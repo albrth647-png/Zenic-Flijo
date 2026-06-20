@@ -17,7 +17,7 @@ import hashlib
 
 from src.orbital.context import OrbitalContext
 from src.orbital.models import TWO_PI
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.workflow.condition_evaluator import ConditionEvaluator
 
 logger = setup_logging(__name__)
@@ -161,7 +161,7 @@ class BranchHandler:
 
     def evaluate_switch(self, expression: str, cases: list[dict], context: dict) -> BranchResult:
         """Evalua una expresion switch con divergencia orbital."""
-        from src.utils.helpers import resolve_variables
+        from src.core.utils import resolve_variables
 
         resolved_expr = resolve_variables(expression, context)
 

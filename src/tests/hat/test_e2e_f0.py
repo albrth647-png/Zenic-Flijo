@@ -7,21 +7,36 @@ Validan el flujo completo HAT-ORBITAL end-to-end:
   sesión nueva vs recurrente, determinismo.
 
 Estos tests son la aceptación final de F0. Si pasan, F0 está completo.
+
+SKIPPED en HAT v2: este archivo usa el fixture router_with_cards que sembraba
+AgentCards con WebResearcherSpecialist/QueryBuilderWorker (stubs eliminados en
+M4) y asume los dominios legacy (research/build/operate). El sistema actual
+usa operaciones/comunicaciones/datos_auto con specialists reales. La cobertura
+equivalente está en src/tests/hat/e2e/test_e2e_hat.py.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 
-from src.agents.base import AgentConfig
-from src.agents.orchestrator import MultiAgentOrchestrator
-from src.hat.agents.specialists.web_researcher import WebResearcherSpecialist
-from src.hat.agents.workers.query_builder import QueryBuilderWorker
-from src.hat.ledger.ovc_bridge import OVCLedgerBridge
-from src.hat.ledger.repository import LedgerRepository
-from src.hat.orbital_n0.tick_router import HATRouter
+# Whole module skipped — see docstring above.
+pytestmark = pytest.mark.skip(
+    reason="HAT v2: este archivo depende del fixture router_with_cards que "
+           "sembraba AgentCards con los stubs WebResearcherSpecialist/"
+           "QueryBuilderWorker eliminados en M4. La cobertura equivalente "
+           "está en src/tests/hat/e2e/test_e2e_hat.py."
+)
+
+from datetime import datetime, timezone
+
+from src.hat.agents_legacy.base import AgentConfig
+from src.hat.agents_legacy.orchestrator import MultiAgentOrchestrator
+# WebResearcherSpecialist / QueryBuilderWorker were eliminated in HAT v2.
+# The router_with_cards fixture below is kept for signature compatibility
+# only; the module is skipped via pytestmark above.
+from src.hat.level1_orchestrator.ledger.ovc_bridge import OVCLedgerBridge
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
+from src.hat.level1_orchestrator.tick_router import HATRouter
 from src.orbital.context import OrbitalContext
 
 
@@ -53,11 +68,12 @@ def cleanup():
 
 @pytest.fixture
 def router_with_cards(repo, ctx, bridge):
-    """Router con 2 Agent Cards publicadas (configuración completa de F0)."""
-    specialist = WebResearcherSpecialist(AgentConfig(name="wr"))
-    specialist.publish_card(repo=repo, ctx=ctx)
-    worker = QueryBuilderWorker(AgentConfig(name="qb"))
-    worker.publish_card(repo=repo, ctx=ctx)
+    """Router con 2 Agent Cards publicadas (configuración completa de F0).
+
+    SKIPPED en HAT v2: las cards se sembraban con WebResearcherSpecialist y
+    QueryBuilderWorker (stubs eliminados en M4). El fixture se mantiene sólo
+    para preservar la firma — el módulo entero está saltado vía pytestmark.
+    """
     return HATRouter(ledger=repo, ctx=ctx, bridge=bridge)
 
 
@@ -234,7 +250,7 @@ class TestE2EScenario5Determinism:
 
     def test_intent_hash_deterministic(self, router_with_cards):
         """El intent_hash subyacente debe ser determinista."""
-        from src.hat.orbital_n0.intent_hasher import compute_intent_hash
+        from src.hat.level1_orchestrator.intent.hasher import compute_intent_hash
 
         h1 = compute_intent_hash("u", "s", "buscar python")
         h2 = compute_intent_hash("u", "s", "buscar python")

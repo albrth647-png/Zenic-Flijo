@@ -24,14 +24,15 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.agents.base import AgentConfig
-from src.agents.orchestrator import MultiAgentOrchestrator
-from src.hat.agents.specialists.web_researcher import WebResearcherSpecialist
-from src.hat.agents.workers.query_builder import QueryBuilderWorker
-from src.hat.anti_duplication.cascade import AntiDuplicationCascade
-from src.hat.ledger.ovc_bridge import OVCLedgerBridge
-from src.hat.ledger.repository import LedgerRepository
-from src.hat.orbital_n0.tick_router import HATRouter
+from src.hat.agents_legacy.base import AgentConfig
+from src.hat.agents_legacy.orchestrator import MultiAgentOrchestrator
+# WebResearcherSpecialist / QueryBuilderWorker were eliminated in HAT v2
+# (specialists/workers stubs removed). These tests no longer require them —
+# the cascade + ledger + repo are sufficient to exercise the race conditions.
+from src.hat.level1_orchestrator.anti_duplication.cascade import AntiDuplicationCascade
+from src.hat.level1_orchestrator.ledger.ovc_bridge import OVCLedgerBridge
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
+from src.hat.level1_orchestrator.tick_router import HATRouter
 from src.orbital.context import OrbitalContext
 
 
@@ -125,6 +126,8 @@ class TestScenario3SubscribeInProgress:
 # ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="HAT v2: circuit_breaker was removed from the cascade (now lives "
+                    "in level4_workers as a separate concern).")
 class TestScenario4CircuitBreakerTrip:
     def test_three_failures_trigger_fallback(self, repo, session):
         """3 fallos consecutivos → Circuit Breaker fallback."""
@@ -151,6 +154,7 @@ class TestScenario4CircuitBreakerTrip:
 # ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="HAT v2: semantic_dedup was eliminated (Jaccard false positives).")
 class TestScenario5SemanticConfirm:
     def test_similar_message_triggers_confirm(self, repo, session):
         """Mensaje similar a dispatch reciente → Semantic Dedup confirm."""
@@ -178,6 +182,8 @@ class TestScenario5SemanticConfirm:
 # ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="HAT v2 M9: TTL Freshness now only blocks the same intent_hash "
+                    "(no longer blocks different messages within the TTL window).")
 class TestScenario6TTLDiscard:
     def test_recent_dispatch_triggers_discard(self, repo, session):
         """Despacho reciente en misma sesión → TTL discard."""

@@ -1,19 +1,34 @@
 """
 Tests para orbital_n0/tick_router.py (F0-D7 sub-features 2, 3, 4).
+
+SKIPPED en HAT v2: este archivo prueba el flujo F0 con los dominios legacy
+(research/build/operate) y los stubs WebResearcherSpecialist/QueryBuilderWorker
+(eliminados en M4). El sistema actual usa los dominios
+operaciones/comunicaciones/datos_auto con specialists reales. La cobertura
+equivalente vive en src/tests/hat/e2e/test_e2e_hat.py.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 
-from src.agents.orchestrator import MultiAgentOrchestrator
-from src.hat.agents.specialists.web_researcher import WebResearcherSpecialist
-from src.hat.agents.workers.query_builder import QueryBuilderWorker
-from src.hat.ledger.ovc_bridge import OVCLedgerBridge
-from src.hat.ledger.repository import LedgerRepository
-from src.hat.orbital_n0.tick_router import HATRouter
+# Whole module skipped — see docstring above.
+pytestmark = pytest.mark.skip(
+    reason="HAT v2: este archivo depende de los dominios legacy "
+           "(research/build/operate) y de los stubs WebResearcherSpecialist/"
+           "QueryBuilderWorker eliminados en M4. La cobertura equivalente "
+           "está en src/tests/hat/e2e/test_e2e_hat.py."
+)
+
+from datetime import datetime, timezone
+
+from src.hat.agents_legacy.orchestrator import MultiAgentOrchestrator
+# WebResearcherSpecialist / QueryBuilderWorker were eliminated in HAT v2.
+# Tests that referenced them via the router_with_cards fixture are skipped
+# at the module level (see pytestmark above).
+from src.hat.level1_orchestrator.ledger.ovc_bridge import OVCLedgerBridge
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
+from src.hat.level1_orchestrator.tick_router import HATRouter
 from src.orbital.context import OrbitalContext
 
 
@@ -51,12 +66,12 @@ def session():
 
 @pytest.fixture
 def router_with_cards(repo, ctx, bridge):
-    """Router con 2 Agent Cards publicadas (web_researcher + query_builder)."""
-    # Publicar cards antes de crear el router
-    specialist = WebResearcherSpecialist(__import__("src.agents.base", fromlist=["AgentConfig"]).AgentConfig(name="wr"))
-    specialist.publish_card(repo=repo, ctx=ctx)
-    worker = QueryBuilderWorker(__import__("src.agents.base", fromlist=["AgentConfig"]).AgentConfig(name="qb"))
-    worker.publish_card(repo=repo, ctx=ctx)
+    """Router con 2 Agent Cards publicadas (web_researcher + query_builder).
+
+    SKIPPED en HAT v2: las cards se sembraban con WebResearcherSpecialist y
+    QueryBuilderWorker (stubs eliminados en M4). El fixture se mantiene sólo
+    para preservar la firma — el módulo entero está saltado vía pytestmark.
+    """
     return HATRouter(ledger=repo, ctx=ctx, bridge=bridge)
 
 
@@ -82,8 +97,9 @@ class TestHATRouterInit:
     def test_init_has_research_supervisor(self, repo, ctx, bridge):
         router = HATRouter(ledger=repo, ctx=ctx, bridge=bridge)
         assert "research" in router._supervisors
-        from src.hat.supervisors.research import ResearchSupervisor
-        assert isinstance(router._supervisors["research"], ResearchSupervisor)
+        # NOTE: ResearchSupervisor was eliminated in HAT v2 — the new
+        # tick_router uses operaciones/comunicaciones/datos_auto supervisors.
+        # The whole module is skipped via pytestmark; this body never runs.
 
 
 # ─────────────────────────────────────────────────────────

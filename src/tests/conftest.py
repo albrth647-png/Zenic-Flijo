@@ -24,18 +24,18 @@ def db_manager(db_path, monkeypatch):
     Provee un DatabaseManager configurado con base de datos temporal.
     Usa monkeypatch para redirigir DB_PATH al archivo temporal.
     """
-    from src import config
+    from src.core import config
+    from src.core.db import sqlite_manager
 
     monkeypatch.setattr(config, "DB_PATH", db_path)
     monkeypatch.setattr(config, "DATA_DIR", db_path.parent)
 
-    from src.data import database_manager
-    from src.data.database_manager import DatabaseManager
+    from src.core.db import DatabaseManager
     from src.workflow.engine import WorkflowEngine
 
-    # Also patch the imported DB_PATH in database_manager module
-    # (it uses 'from src.config import DB_PATH' which creates a local binding)
-    monkeypatch.setattr(database_manager, "DB_PATH", db_path)
+    # Also patch the imported DB_PATH in sqlite_manager module
+    # (it uses 'from src.core.config import DB_PATH' which creates a local binding)
+    monkeypatch.setattr(sqlite_manager, "DB_PATH", db_path)
 
     # Reset singletons para usar nueva DB
     DatabaseManager._instance = None
@@ -89,7 +89,7 @@ def sample_context():
 @pytest.fixture
 def crm_service(db_manager):
     """Provee un CRMService con base de datos temporal."""
-    from src.tools.crm.service import CRMService
+    from src.hat.level5_tools.business.crm.service import CRMService
 
     return CRMService()
 
@@ -97,7 +97,7 @@ def crm_service(db_manager):
 @pytest.fixture
 def invoice_service(db_manager):
     """Provee un InvoiceService con base de datos temporal."""
-    from src.tools.invoice.service import InvoiceService
+    from src.hat.level5_tools.business.invoice.service import InvoiceService
 
     return InvoiceService()
 
@@ -105,7 +105,7 @@ def invoice_service(db_manager):
 @pytest.fixture
 def inventory_service(db_manager):
     """Provee un InventoryService con base de datos temporal."""
-    from src.tools.inventory.service import InventoryService
+    from src.hat.level5_tools.business.inventory.service import InventoryService
 
     return InventoryService()
 
@@ -113,7 +113,7 @@ def inventory_service(db_manager):
 @pytest.fixture
 def notification_service(db_manager):
     """Provee un NotificationService con base de datos temporal."""
-    from src.tools.notification.service import NotificationService
+    from src.hat.level5_tools.communications.notification.service import NotificationService
 
     return NotificationService()
 

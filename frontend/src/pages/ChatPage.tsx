@@ -71,24 +71,22 @@ export default function ChatPage() {
       const api = getApi()
 
       if (mode === "chat") {
-        // Modo "Sugerencias de workflows" → /api/workflows/chat
-        const res = await api.post("/api/workflows/chat", { text })
+        // M10: HATRouter (5 niveles) → /api/workflows/chat
+        const res = await api.post("/api/workflows/chat", { message: text })
         const data = res as {
-          suggestions?: Array<{
-            template_name: string
-            confidence: number
-            description: string
-            trigger: string
-            steps: number
-          }>
-          message?: string
+          dispatch_id?: string
+          domain?: string
+          response?: string
+          status?: string
+          orbital_resonance?: number
+          anti_dup_layer_hit?: string
+          duration_ms?: number
         }
         const assistantMsg: Message = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          content: data.message || "Estas son las sugerencias que encontré:",
+          content: data.response || data.status || "No pude procesar tu solicitud.",
           mode: "chat",
-          suggestions: data.suggestions || [],
         }
         setMessages((prev) => [...prev, assistantMsg])
       } else if (mode === "analyze") {

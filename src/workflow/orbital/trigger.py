@@ -6,7 +6,7 @@ Extraído de WorkflowEngine._inject_trigger_as_orbital().
 from __future__ import annotations
 
 from src.orbital.models import TWO_PI
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

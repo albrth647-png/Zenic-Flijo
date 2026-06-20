@@ -29,7 +29,7 @@ from src.orbital.espectro import EspectroOrbital
 from src.orbital.ovc import OVC
 from src.orbital.rcc import RCC
 from src.orbital.tor import TOR
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

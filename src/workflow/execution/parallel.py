@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.workflow.execution.result import ForkResult, JoinResult
 
 logger = setup_logging(__name__)
@@ -172,7 +172,7 @@ class ForkHandler:
 
         import json
 
-        from src.utils.helpers import resolve_variables, safe_get
+        from src.core.utils import resolve_variables, safe_get
 
         collection = None
         if isinstance(collection_ref, (list, tuple)):

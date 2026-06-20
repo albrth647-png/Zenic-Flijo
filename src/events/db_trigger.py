@@ -5,9 +5,9 @@ Detecta cambios en tablas SQLite y emite eventos correspondientes.
 
 from typing import ClassVar
 
-from src.data.database_manager import DatabaseManager
+from src.core.db import DatabaseManager
 from src.events.bus import EventBus
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

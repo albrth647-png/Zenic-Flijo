@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from src.utils.logger import get_logger
+from src.core.logging import get_logger
 
 logger = get_logger("mobile.push")
 
@@ -171,7 +171,7 @@ class PushNotificationService:
 
     def __init__(self, db_path: str = None) -> None:
         if db_path is None:
-            from src.config import PUSH_NOTIFICATIONS_DB_PATH
+            from src.core.config import PUSH_NOTIFICATIONS_DB_PATH
             db_path = str(PUSH_NOTIFICATIONS_DB_PATH)
         self._db_path = db_path
         self._conn: sqlite3.Connection | None = None

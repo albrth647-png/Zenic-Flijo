@@ -33,7 +33,7 @@ from src.orbital.db import OrbitalDB
 from src.orbital.models import (
     TWO_PI,
 )
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

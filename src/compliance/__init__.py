@@ -46,7 +46,7 @@ from src.compliance.soc2_type_ii import (
     TestResultStatus,
     recommend_sample_size,
 )
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging("compliance")
 
@@ -242,7 +242,7 @@ class ComplianceManager:
 
     def __init__(self, db_path: str = None) -> None:
         if db_path is None:
-            from src.config import COMPLIANCE_DB_PATH
+            from src.core.config import COMPLIANCE_DB_PATH
             db_path = str(COMPLIANCE_DB_PATH)
         self._db_path = db_path
         self._controls: dict[str, ComplianceControl] = {}

@@ -27,8 +27,8 @@ from datetime import UTC
 
 from src.orbital.context import OrbitalContext
 from src.orbital.models import TWO_PI
-from src.utils.helpers import resolve_variables
-from src.utils.logger import setup_logging
+from src.core.utils import resolve_variables
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -312,7 +312,7 @@ class StepExecutor:
         para backward compatibility con callers que esperan int (no float)
         para enteros.
         """
-        from src.utils.helpers import coerce_numeric
+        from src.core.utils import coerce_numeric
 
         if not isinstance(value, str):
             return value
@@ -325,7 +325,7 @@ class StepExecutor:
 
     def _execute_system_action(self, action: str, params: dict, context: dict | None = None) -> dict:
         """Ejecuta acciones del sistema (backup, wait, schedule)."""
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         db = DatabaseManager()
 

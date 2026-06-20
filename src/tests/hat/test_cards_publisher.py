@@ -17,12 +17,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.agents.base import AgentConfig
-from src.hat.agents.card_publisher import CardPublisherMixin
-from src.hat.agents.cards import AgentCard
-from src.hat.agents.specialists.web_researcher import WebResearcherSpecialist
-from src.hat.agents.workers.query_builder import QueryBuilderWorker
-from src.hat.ledger.repository import LedgerRepository
+from src.hat.agents_legacy.base import AgentConfig
+from src.hat.level3_specialists.base.card_publisher import CardPublisherMixin
+from src.hat.level3_specialists.base.cards import AgentCard
+# WebResearcherSpecialist / QueryBuilderWorker were eliminated in HAT v2.
+# The integration tests that depended on them (TestIntegrationWebResearcher,
+# TestIntegrationQueryBuilder, TestE2EPublishTwoCards) are skipped below.
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
 from src.orbital.context import OrbitalContext
 
 
@@ -156,7 +157,7 @@ class TestCardPublisherMixin:
     def test_mixin_get_card_raises_not_implemented(self):
         """Si una subclase no implementa get_card(), debe dar NotImplementedError."""
         # Crear una clase que herede BaseAgent + CardPublisherMixin sin implementar get_card
-        from src.agents.base import BaseAgent
+        from src.hat.agents_legacy.base import BaseAgent
 
         class IncompleteAgent(BaseAgent, CardPublisherMixin):
             def think(self, observation):
@@ -169,9 +170,11 @@ class TestCardPublisherMixin:
         with pytest.raises(NotImplementedError, match="get_card"):
             agent.get_card()
 
+    @pytest.mark.skip(reason="HAT v2: LedgerRepository.get_agent_card was removed; "
+                             "agent cards are now persisted via level3 specialist bootstrap.")
     def test_publish_card_persists_to_db(self, repo, ctx, unique_agent_id):
         """publish_card debe crear una fila en hat_agent_cards."""
-        from src.agents.base import BaseAgent
+        from src.hat.agents_legacy.base import BaseAgent
 
         class TestAgent(BaseAgent, CardPublisherMixin):
             def think(self, observation):
@@ -199,7 +202,7 @@ class TestCardPublisherMixin:
 
     def test_publish_card_injects_ovc_variable(self, repo, ctx, unique_agent_id):
         """publish_card debe crear una variable OVC con el nombre canónico."""
-        from src.agents.base import BaseAgent
+        from src.hat.agents_legacy.base import BaseAgent
 
         class TestAgent(BaseAgent, CardPublisherMixin):
             def think(self, observation):
@@ -229,7 +232,7 @@ class TestCardPublisherMixin:
 
     def test_publish_card_is_idempotent(self, repo, ctx, unique_agent_id):
         """Publicar 2 veces la misma card no duplica variables OVC."""
-        from src.agents.base import BaseAgent
+        from src.hat.agents_legacy.base import BaseAgent
 
         class TestAgent(BaseAgent, CardPublisherMixin):
             def think(self, observation):
@@ -258,7 +261,7 @@ class TestCardPublisherMixin:
 
     def test_publish_card_returns_the_card(self, repo, ctx, unique_agent_id):
         """publish_card retorna la AgentCard publicada (no None)."""
-        from src.agents.base import BaseAgent
+        from src.hat.agents_legacy.base import BaseAgent
 
         class TestAgent(BaseAgent, CardPublisherMixin):
             def think(self, observation):
@@ -303,8 +306,12 @@ class TestCardPublisherMixin:
 # ─────────────────────────────────────────────────────────
 # Integración: WebResearcher + QueryBuilder
 # ─────────────────────────────────────────────────────────
+# NOTE: The three classes below depend on the eliminated HAT v1 stubs
+# (WebResearcherSpecialist / QueryBuilderWorker). They are skipped until
+# equivalent seed logic is wired through the new level3/level4 specialists.
 
 
+@pytest.mark.skip(reason="HAT v2: WebResearcherSpecialist stub eliminated.")
 class TestIntegrationWebResearcher:
     def test_web_researcher_has_get_card(self):
         specialist = WebResearcherSpecialist(AgentConfig(name="wr"))
@@ -334,6 +341,7 @@ class TestIntegrationWebResearcher:
         assert var.orbit_group == "hat_cards_research"
 
 
+@pytest.mark.skip(reason="HAT v2: QueryBuilderWorker stub eliminated.")
 class TestIntegrationQueryBuilder:
     def test_query_builder_has_get_card(self):
         worker = QueryBuilderWorker(AgentConfig(name="qb"))
@@ -367,6 +375,7 @@ class TestIntegrationQueryBuilder:
 # ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="HAT v2: WebResearcherSpecialist / QueryBuilderWorker stubs eliminated.")
 class TestE2EPublishTwoCards:
     def test_publish_two_cards_creates_two_ovc_variables(self, repo, ctx):
         """Publicar WebResearcher + QueryBuilder debe crear 2 variables OVC."""

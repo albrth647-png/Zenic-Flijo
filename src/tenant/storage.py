@@ -16,10 +16,10 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from src.config import DATA_DIR
-from src.data.database_manager import DatabaseManager
-from src.utils.logger import setup_logging
-from src.utils.sql import safe_drop_table_if_exists, validate_identifier
+from src.core.config import DATA_DIR
+from src.core.db import DatabaseManager
+from src.core.logging import setup_logging
+from src.core.db import safe_drop_table_if_exists, validate_identifier
 
 logger = setup_logging(__name__)
 

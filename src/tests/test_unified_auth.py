@@ -88,24 +88,24 @@ class TestSSOServiceAccessibility:
     """SSOService debe ser accesible vía el paquete sso/ (no solo sso.py)."""
 
     def test_sso_service_importable_from_package(self):
-        """from src.security.sso import SSOService debe funcionar."""
-        from src.security.sso import SSOService
+        """from src.core.security.sso import SSOService debe funcionar."""
+        from src.core.security.sso import SSOService
         assert SSOService is not None
         assert hasattr(SSOService, "__init__")
 
     def test_sso_service_is_class(self):
         import inspect
 
-        from src.security.sso import SSOService
+        from src.core.security.sso import SSOService
         assert inspect.isclass(SSOService)
 
     def test_security_init_imports_sso_service(self):
-        """from src.security import SSOService también debe funcionar."""
-        from src.security import SSOService
+        """from src.core.security import SSOService también debe funcionar."""
+        from src.core.security import SSOService
         assert SSOService is not None
 
     def test_security_init_imports_register_sso_routes(self):
-        from src.security import register_sso_routes
+        from src.core.security import register_sso_routes
         assert callable(register_sso_routes)
 
 
@@ -164,7 +164,7 @@ class TestNoMappingModuleReferences:
     def test_no_mapping_import_in_sso_routes(self):
         """src.security.sso.routes no debe importar de .mapping."""
         # Si el import de routes falla, este test falla
-        from src.security.sso import routes
+        from src.core.security.sso import routes
         assert hasattr(routes, "register_sso_routes")
 
     def test_no_mapping_import_in_sso_legacy_module(self):

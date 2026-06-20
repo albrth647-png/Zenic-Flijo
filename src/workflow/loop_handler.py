@@ -18,7 +18,7 @@ import hashlib
 
 from src.orbital.context import OrbitalContext
 from src.orbital.models import DEFAULT_THRESHOLD, TWO_PI
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -69,7 +69,7 @@ class LoopHandler:
 
         import json
 
-        from src.utils.helpers import resolve_variables, safe_get
+        from src.core.utils import resolve_variables, safe_get
 
         collection_str = resolve_variables(collection_ref, context)
         collection = collection_str

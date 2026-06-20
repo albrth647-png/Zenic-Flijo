@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.api_v2.models import APIInfoResponse, ErrorResponse, HealthResponse
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 
     # Inicializar servicios
     try:
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         db = DatabaseManager()
         _ensure_api_v2_tables(db)
@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Error inicializando base de datos: {e}")
 
     try:
-        from src.observability.telemetry import TelemetryService
+        from src.core.observability.telemetry import TelemetryService
 
         telemetry = TelemetryService()
         telemetry.initialize()
@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
     logger.info("Zenic-Flijo API v2 cerrando...")
 
     try:
-        from src.observability.telemetry import TelemetryService
+        from src.core.observability.telemetry import TelemetryService
 
         telemetry = TelemetryService()
         telemetry.shutdown()
@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Error cerrando telemetria: {e}")
 
     try:
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         db = DatabaseManager()
         db.close_all()
@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Error cerrando base de datos: {e}")
 
     try:
-        from src.data.redis_service import RedisService
+        from src.core.db import RedisService
 
         redis = RedisService()
         redis.close()
@@ -364,6 +364,9 @@ app.include_router(agents_router)
 app.include_router(bpmn_router)
 app.include_router(compliance_router)
 app.include_router(mobile_router)
+# M8: HAT router (Nivel 1) — POST /api/hat/chat
+from src.hat.level1_orchestrator.api.routes import router as hat_router
+app.include_router(hat_router)
 
 
 # ── Health Check Endpoint ──────────────────────────────────────
@@ -382,7 +385,7 @@ async def health_check() -> HealthResponse:
 
     # Verificar base de datos
     try:
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         db = DatabaseManager()
         db.fetchone("SELECT 1 as test")
@@ -392,7 +395,7 @@ async def health_check() -> HealthResponse:
 
     # Verificar Redis
     try:
-        from src.data.redis_service import RedisService
+        from src.core.db import RedisService
 
         redis = RedisService()
         if redis.ping():
@@ -432,7 +435,7 @@ async def health_check() -> HealthResponse:
 
     # Verificar agent runtime (Phase 3)
     try:
-        from src.agents.runtime import AgentRuntime
+        from src.hat.agents_legacy.runtime import AgentRuntime
 
         runtime = AgentRuntime.get_instance()
         stats = runtime.get_stats()

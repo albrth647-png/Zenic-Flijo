@@ -88,7 +88,7 @@ def api_report_audit(fmt):
     Necesario para compliance SOC 2 / GDPR."""
     import io
 
-    from src.data.audit_repository import AuditRepository
+    from src.core.repositories import AuditRepository
     from src.web.helpers import db
 
     audit_repo = AuditRepository(db)

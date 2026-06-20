@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.orbital.models import DEFAULT_AMPLITUDE, DEFAULT_VELOCITY, VariableOrbital
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

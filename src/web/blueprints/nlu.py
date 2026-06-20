@@ -68,36 +68,25 @@ def api_nlu_understand():
 @bp.route("/api/workflows/chat", methods=["POST"])
 @login_required
 def api_chat():
+    """Chat endpoint — usa HATRouter (Nivel 1) para procesar mensajes."""
     data = request.get_json() or {}
-    text = data.get("text", "")
+    message = data.get("message", data.get("text", "")).strip()
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
 
-    classifier = IntentClassifier()
-    intent_matches = classifier.classify_text(text)
-
-    if not intent_matches:
-        return jsonify({
-            "suggestions": [],
-            "message": "No entendí tu solicitud. Intenta describir qué quieres automatizar.",
-        })
-
-    suggestions = []
-    for im in intent_matches[:5]:
-        template = next((t for t in TEMPLATES if t["name"] == im.intent), None)
-        if template:
-            suggestions.append({
-                "template_name": im.intent,
-                "confidence": im.score,
-                "description": template.get("description_es", ""),
-                "trigger": template["trigger"],
-                "steps": template["steps"],
-                "score": im.score,
-                "evidence": im.evidence,
-            })
-
-    return jsonify({
-        "suggestions": suggestions,
-        "message": f"Encontré {len(suggestions)} sugerencias para tu solicitud.",
-    })
+    # M8: Usar HATRouter (sistema HAT de 5 niveles)
+    from src.hat import get_hat_router
+    try:
+        hat_router = get_hat_router()
+        result = hat_router.handle(
+            user_id=str(session.get("user_id", "1")),
+            session_id=str(session.get("session_id", "default")),
+            message=message,
+        )
+        return jsonify(result)
+    except Exception as exc:
+        logger.error("HAT chat error: %s", exc)
+        return jsonify({"error": str(exc), "status": "failed"}), 500
 
 
 @bp.route("/api/nlu/ai-generate", methods=["POST"])

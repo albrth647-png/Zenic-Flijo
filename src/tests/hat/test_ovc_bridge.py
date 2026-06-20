@@ -16,8 +16,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.hat.ledger.repository import LedgerRepository
-from src.hat.ledger.ovc_bridge import (
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
+from src.hat.level1_orchestrator.ledger.ovc_bridge import (
     FACT_GROUP,
     FACT_THETA,
     FACT_VELOCITY,

@@ -10,10 +10,10 @@ import base64
 from datetime import datetime, timedelta
 from typing import ClassVar
 
-from src.config import TRIAL_DAYS
-from src.data.database_manager import DatabaseManager
+from src.core.config import TRIAL_DAYS
+from src.core.db import DatabaseManager
 from src.license.keys import load_public_key
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 # Caracteres permitidos en License Keys (sin vocales para evitar palabras)
 LICENSE_CHARSET = "BCDFGHJKLMNPQRSTVWXYZ23456789"

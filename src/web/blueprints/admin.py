@@ -4,8 +4,8 @@ Blueprints — Admin: Users, Dead Letter Queue y Work Queue
 
 from flask import Blueprint, jsonify, request, session
 
-from src.data.audit_repository import AuditRepository
-from src.data.user_repository import UserRepository
+from src.core.repositories import AuditRepository
+from src.core.repositories import UserRepository
 from src.web.helpers import login_required, require_role
 
 users = UserRepository()
@@ -225,9 +225,9 @@ def api_admin_metrics():
     Devuelve métricas del sistema en formato JSON para el dashboard admin.
     Combina datos de MetricsRegistry (Prometheus), WorkQueue y DeadLetterManager.
     """
-    from src.data.database_manager import DatabaseManager
+    from src.core.db import DatabaseManager
     from src.events.work_queue import WorkQueue
-    from src.observability.metrics import MetricsRegistry
+    from src.core.observability.metrics import MetricsRegistry
     from src.workflow.dead_letter import DeadLetterManager
 
     db = DatabaseManager()
@@ -294,7 +294,7 @@ def api_admin_metrics_prometheus():
     service account con rol 'admin' y autenticar por Bearer token via header
     Authorization: Bearer <service_account_token>.
     """
-    from src.observability.metrics import MetricsRegistry
+    from src.core.observability.metrics import MetricsRegistry
 
     metrics = MetricsRegistry()
     return metrics.get_metrics(), 200, {"Content-Type": "text/plain; version=0.0.4"}
@@ -305,7 +305,7 @@ def api_admin_metrics_prometheus():
 @require_role("admin")
 def api_admin_list_alerts():
     """Lista alertas, opcionalmente filtradas por status."""
-    from src.observability.alerts import AlertService
+    from src.core.observability.alerts import AlertService
 
     status = request.args.get("status")  # active, resolved, suppressed, None (all)
     limit = min(200, max(1, request.args.get("limit", default=50, type=int)))
@@ -328,7 +328,7 @@ def api_admin_list_alerts():
 @require_role("admin")
 def api_admin_resolve_alert(alert_id):
     """Marca una alerta como resuelta."""
-    from src.observability.alerts import AlertService
+    from src.core.observability.alerts import AlertService
 
     service = AlertService()
     resolved = service.resolve_alert(alert_id)
@@ -342,7 +342,7 @@ def api_admin_resolve_alert(alert_id):
 @require_role("admin")
 def api_admin_alerts_stats():
     """Resumen agregado de alertas para dashboard."""
-    from src.observability.alerts import AlertService
+    from src.core.observability.alerts import AlertService
 
     service = AlertService()
     return jsonify(service.get_alert_stats())
@@ -353,7 +353,7 @@ def api_admin_alerts_stats():
 @require_role("admin")
 def api_admin_alert_rules():
     """Lista las reglas de alerta configuradas."""
-    from src.observability.alerts import DEFAULT_RULES
+    from src.core.observability.alerts import DEFAULT_RULES
 
     rules = [
         {
@@ -377,7 +377,7 @@ def api_admin_alert_rules():
 @require_role("admin")
 def api_admin_evaluate_alerts():
     """Evalúa manualmente todas las reglas y dispara alertas si procede."""
-    from src.observability.alerts import AlertService
+    from src.core.observability.alerts import AlertService
 
     service = AlertService()
     # Registrar providers reales del sistema
@@ -392,7 +392,7 @@ def api_admin_evaluate_alerts():
 
 def _register_default_metric_providers(service) -> None:
     """Registra providers de métricas reales del sistema en el AlertService."""
-    from src.data.database_manager import DatabaseManager
+    from src.core.db import DatabaseManager
     from src.events.work_queue import WorkQueue
     from src.workflow.dead_letter import DeadLetterManager
 

@@ -190,7 +190,7 @@ class TestSecretsManagement:
 
     def test_config_validate_function_exists(self):
         """config.py debe tener una función validate() que verifique secrets."""
-        from src.config import validate_config
+        from src.core.config import validate_config
 
         assert callable(validate_config)
 
@@ -208,7 +208,7 @@ class TestSQLInjectionPrevention:
         # Verificar que execute() acepta params
         import inspect
 
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         sig = inspect.signature(DatabaseManager.execute)
         assert "params" in sig.parameters
@@ -230,7 +230,7 @@ class TestSQLInjectionPrevention:
         """update_user() usa allowlist de columnas, no input directo."""
         import inspect
 
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         source = inspect.getsource(DatabaseManager.update_user)
         assert "allowed" in source or "set_parts" in source
@@ -274,7 +274,7 @@ class TestRateLimiting:
 
     def test_rate_limit_config_exists(self):
         """Debe haber constantes de rate limiting en config."""
-        from src.config import LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MINUTES
+        from src.core.config import LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MINUTES
 
         assert LOGIN_MAX_ATTEMPTS > 0
         assert LOGIN_WINDOW_MINUTES > 0
@@ -307,7 +307,7 @@ class TestCookieSecurity:
 
     def test_session_secret_from_env(self):
         """SESSION_SECRET debe venir de variable de entorno."""
-        from src.config import SESSION_SECRET
+        from src.core.config import SESSION_SECRET
 
         assert len(SESSION_SECRET) >= 32, "SESSION_SECRET demasiado corto"
 
@@ -322,42 +322,42 @@ class TestSandboxSecurity:
 
     def test_sandbox_blocks_import_os(self):
         """El sandbox debe bloquear import os."""
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("import os\nresult = os.getcwd()")
         assert not result.success
 
     def test_sandbox_blocks_import_sys(self):
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("import sys\nresult = sys.path")
         assert not result.success
 
     def test_sandbox_blocks_eval(self):
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("result = eval(\"__import__('os').getcwd()\")")
         assert not result.success
 
     def test_sandbox_blocks_exec(self):
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python('exec("import os")')
         assert not result.success
 
     def test_sandbox_blocks_open(self):
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python('result = open("/etc/passwd").read()')
         assert not result.success
 
     def test_sandbox_blocks_subprocess(self):
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("import subprocess\nresult = subprocess.run(['ls'])")
@@ -365,7 +365,7 @@ class TestSandboxSecurity:
 
     def test_sandbox_allows_safe_modules(self):
         """El sandbox debe permitir módulos seguros (math, json, etc.)."""
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("import math\nresult = math.pi")
@@ -373,7 +373,7 @@ class TestSandboxSecurity:
 
     def test_sandbox_timeout(self):
         """El sandbox debe respetar el timeout."""
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox(timeout=2)
         result = sandbox.execute_python("import time\ntime.sleep(10)\nresult = 1")
@@ -381,7 +381,7 @@ class TestSandboxSecurity:
 
     def test_sandbox_output_capture(self):
         """El sandbox debe capturar stdout."""
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("print('hello world')\nresult = 42")
@@ -389,14 +389,14 @@ class TestSandboxSecurity:
         assert "hello world" in result.stdout
 
     def test_sandbox_empty_code(self):
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("")
         assert not result.success
 
     def test_sandbox_syntax_error(self):
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python("def (invalid")
@@ -404,7 +404,7 @@ class TestSandboxSecurity:
 
     def test_sandbox_input_vars(self):
         """Las variables de input deben estar disponibles en el sandbox."""
-        from src.tools.code_runner.sandbox import CodeSandbox
+        from src.hat.level5_tools.automation.code_runner.sandbox import CodeSandbox
 
         sandbox = CodeSandbox()
         result = sandbox.execute_python(
@@ -462,7 +462,7 @@ class TestSemgrepFindingsTriaged:
         """El f-string en update_user() es seguro porque usa allowlist de columnas."""
         import inspect
 
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         source = inspect.getsource(DatabaseManager.update_user)
         assert "allowed" in source  # Solo columnas permitidas

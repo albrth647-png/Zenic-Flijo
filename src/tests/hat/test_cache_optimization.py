@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.hat.anti_duplication.exact_match import ExactMatchLayer, _CACHE_MAX_SIZE
-from src.hat.anti_duplication.ttl_freshness import TTLFreshnessLayer
-from src.hat.ledger.repository import LedgerRepository
+from src.hat.level1_orchestrator.anti_duplication.exact_match import ExactMatchLayer, _CACHE_MAX_SIZE
+from src.hat.level1_orchestrator.anti_duplication.ttl_freshness import TTLFreshnessLayer
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
 
 
 @pytest.fixture

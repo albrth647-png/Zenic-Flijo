@@ -7,9 +7,9 @@ import contextlib
 import os
 import webbrowser
 
-from src.config import WEB_HOST, WEB_PORT, WEBHOOK_PORT
-from src.data.database_manager import DatabaseManager
-from src.utils.logger import setup_logging
+from src.core.config import WEB_HOST, WEB_PORT, WEBHOOK_PORT
+from src.core.db.sqlite_manager import DatabaseManager
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -33,7 +33,7 @@ def start_workers(event_bus, event_queue, workflow_subscriber):
     workers.append(("WebhookServer", ws))
 
     # BackupEngine
-    from src.data.backup_engine import BackupEngine
+    from src.core.db.backup_engine import BackupEngine
 
     be = BackupEngine()
     be.start_auto_backup(interval_hours=24)
@@ -72,55 +72,25 @@ def start_workers(event_bus, event_queue, workflow_subscriber):
 
 
 def register_tools(event_bus):
-    """Registra todas las herramientas de negocio en el WorkflowEngine."""
-    from src.tools.api_connector.service import APIConnectorService
-    from src.tools.autopilot.service import AutoPilotService
-    from src.tools.code_runner.service import CodeRunnerTool
-    from src.tools.crm.service import CRMService
-    from src.tools.data_keeper.service import DataKeeperService
-    from src.tools.integrations.drive_service import DriveService
-    from src.tools.integrations.gmail_service import GmailService
-    from src.tools.integrations.mercadopago_service import MercadoPagoService
-    from src.tools.integrations.ollama_service import OllamaService
-    from src.tools.integrations.openai_service import OpenAIService
-    from src.tools.integrations.postgresql_service import PostgreSQLService
-    from src.tools.integrations.sheets_service import SheetsService
-    from src.tools.integrations.slack_service import SlackService
-    from src.tools.integrations.stripe_service import StripeService
-    from src.tools.integrations.telegram_service import TelegramService
-    from src.tools.inventory.service import InventoryService
-    from src.tools.invoice.service import InvoiceService
-    from src.tools.logic_gate.service import LogicGateService
-    from src.tools.notification.service import NotificationService
+    """Registra todas las herramientas de negocio en el WorkflowEngine.
+
+    Usa ToolsRegistry (Nivel 5) como punto único de registro.
+    Añadir tool nueva = 1 entrada en src/hat/level5_tools/registry.py
+    """
+    from src.hat.level5_tools.registry import get_tools_registry
     from src.workflow.engine import WorkflowEngine
 
     engine = WorkflowEngine()
 
-    # Registrar cada tool con su servicio (inyectar event_bus)
-    engine.register_tool("crm", CRMService(event_bus=event_bus))
-    engine.register_tool("invoice", InvoiceService(event_bus=event_bus))
-    engine.register_tool("inventory", InventoryService(event_bus=event_bus))
-    engine.register_tool("notification", NotificationService())
-    engine.register_tool("autopilot", AutoPilotService())
-    engine.register_tool("logic_gate", LogicGateService(event_bus=event_bus))
-    engine.register_tool("api_connector", APIConnectorService())
-    engine.register_tool("data_keeper", DataKeeperService())
-    engine.register_tool("code_runner", CodeRunnerTool())
+    # ToolsRegistry.register_all() instancia las 19 tools automáticamente
+    tools = get_tools_registry().register_all(event_bus=event_bus)
 
-    # Integraciones (se activan cuando el usuario configura credenciales)
-    engine.register_tool("gmail", GmailService())
-    engine.register_tool("sheets", SheetsService())
-    engine.register_tool("telegram", TelegramService())
-    engine.register_tool("slack", SlackService())
-    # Sprint 6: Nuevos conectores
-    engine.register_tool("openai", OpenAIService())
-    engine.register_tool("ollama", OllamaService())
-    engine.register_tool("postgresql", PostgreSQLService())
-    engine.register_tool("drive", DriveService())
-    engine.register_tool("stripe", StripeService())
-    engine.register_tool("mercadopago", MercadoPagoService())
+    # Registrar cada tool en el WorkflowEngine
+    for name, tool_instance in tools.items():
+        engine.register_tool(name, tool_instance)
 
     logger.info(f"Herramientas registradas: {list(engine._tools.keys())}")
+    logger.info(f"Total tools: {len(tools)} (vía ToolsRegistry)")
     return engine
 
 
@@ -167,7 +137,7 @@ def main():
         if existing_users and existing_users[0]["count"] == 0:
             import hashlib
             import secrets as _secrets
-            from src.config import PRODUCTION
+            from src.core.config import PRODUCTION
 
             # En producción, REQUIRE env var WFD_ADMIN_PASSWORD (≥12 chars).
             # En dev, default con warning loud.
@@ -250,6 +220,38 @@ def main():
 
     logger.info(f"Servidor iniciado en {url}")
     logger.info("Presiona Ctrl+C para detener el sistema")
+
+    # M10.2: Lanzar FastAPI v2 en un hilo en background (port 8000).
+    # Flask sigue en el hilo principal (port 8080). Ambos comparten el mismo
+    # proceso Python (sqlite_manager es thread-safe; los workers ya corren
+    # en hilos propios). Si uvicorn no está instalado, se loggea warning y
+    # el sistema sigue funcionando solo con Flask.
+    import threading
+
+    def run_fastapi():
+        """Run FastAPI v2 in background thread.
+
+        Imports are lazy: uvicorn y api_v2.app pueden no estar instalados
+        en entornos mínimos (CI, dev sin extras). En ese caso, se loggea
+        un warning y el sistema sigue operativo con Flask solamente.
+        """
+        try:
+            import uvicorn
+
+            from src.api_v2.app import app as fastapi_app
+
+            uvicorn.run(fastapi_app, host="0.0.0.0", port=8000, log_level="info")
+        except ImportError:
+            logger.warning(
+                "uvicorn no instalado — FastAPI v2 no iniciado. "
+                "Instalar con: pip install uvicorn fastapi"
+            )
+        except Exception as exc:
+            logger.error("FastAPI v2 no pudo iniciar: %s", exc)
+
+    fastapi_thread = threading.Thread(target=run_fastapi, daemon=True, name="fastapi-v2")
+    fastapi_thread.start()
+    logger.info("FastAPI v2 iniciado en puerto 8000 (background thread)")
 
     # 6. Iniciar servidor Flask
     try:

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.observability.alerts import (
+from src.core.observability.alerts import (
     DEFAULT_RULES,
     AlertEvent,
     AlertRule,

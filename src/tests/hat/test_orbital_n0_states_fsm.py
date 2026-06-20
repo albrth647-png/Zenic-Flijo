@@ -14,7 +14,7 @@ import math
 
 import pytest
 
-from src.hat.orbital_n0.states import (
+from src.hat.level1_orchestrator.fsm.states import (
     FORWARD_TRANSITIONS,
     SECTOR_RAD,
     STATE_THETA,
@@ -25,7 +25,7 @@ from src.hat.orbital_n0.states import (
     next_states,
     theta_to_state,
 )
-from src.hat.orbital_n0.fsm_disambiguator import (
+from src.hat.level1_orchestrator.fsm.disambiguator import (
     CLARIFY_DOMAIN,
     DISAMBIGUATION_THRESHOLD,
     DOMAIN_KEYWORDS,

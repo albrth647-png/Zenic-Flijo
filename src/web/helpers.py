@@ -11,17 +11,17 @@ from functools import wraps
 
 from flask import jsonify, redirect, request, session, url_for
 
-from src.config import (
+from src.core.config import (
     FREE_TIER_ALLOWED_TOOLS,
     FREE_TIER_MAX_WORKFLOWS,
     LOGIN_MAX_ATTEMPTS,
     LOGIN_WINDOW_MINUTES,
 )
-from src.data.database_manager import DatabaseManager
+from src.core.db import DatabaseManager
 from src.events.bus import EventBus
 from src.events.workflow_subscriber import WorkflowSubscriber
 from src.license.validator import LicenseValidator
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.workflow.repository import WorkflowRepository
 
 logger = setup_logging(__name__)
@@ -181,7 +181,7 @@ def require_role(role: str):
     Fix Sprint 5 BUG-ARCH-03: usa `role_at_least` del módulo compartido
     `security.auth_shared` para evitar drift con FastAPI.
     """
-    from src.security.auth_shared import role_at_least
+    from src.core.security.auth_shared import role_at_least
 
     def decorator(f):
         @wraps(f)

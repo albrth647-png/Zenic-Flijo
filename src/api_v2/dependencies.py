@@ -29,7 +29,7 @@ async def get_db() -> Any:
     Returns:
         DatabaseManager: Instancia de la base de datos SQLite
     """
-    from src.data.database_manager import DatabaseManager
+    from src.core.db import DatabaseManager
 
     return DatabaseManager()
 
@@ -40,7 +40,7 @@ async def get_redis() -> Any:
     Returns:
         RedisService: Instancia del servicio de Redis
     """
-    from src.data.redis_service import RedisService
+    from src.core.db import RedisService
 
     return RedisService()
 
@@ -106,7 +106,7 @@ async def get_rbac_manager() -> Any:
     Returns:
         RBACManager: Instancia del gestor de RBAC granular
     """
-    from src.security.rbac import RBACManager
+    from src.core.security.rbac import RBACManager
 
     return RBACManager()
 
@@ -117,7 +117,7 @@ async def get_telemetry_service() -> Any:
     Returns:
         TelemetryService: Instancia del servicio de telemetria
     """
-    from src.observability.telemetry import TelemetryService
+    from src.core.observability.telemetry import TelemetryService
 
     return TelemetryService()
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 import sys
 
 from src.cli.commands import COMMAND_MAP, build_parser
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

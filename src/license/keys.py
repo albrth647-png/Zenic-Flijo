@@ -12,8 +12,8 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from src.config import DATA_DIR
-from src.utils.logger import setup_logging
+from src.core.config import DATA_DIR
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

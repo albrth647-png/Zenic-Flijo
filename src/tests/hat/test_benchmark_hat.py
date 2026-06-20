@@ -37,14 +37,14 @@ def benchmark_module():
 class TestSetupRouter:
     def test_setup_router_returns_hat_router(self, benchmark_module):
         """setup_router() debe retornar una instancia de HATRouter."""
-        from src.hat.orbital_n0.tick_router import HATRouter
+        from src.hat.level1_orchestrator.tick_router import HATRouter
 
         router = benchmark_module.setup_router()
         assert isinstance(router, HATRouter)
 
     def test_setup_router_publishes_2_cards(self, benchmark_module):
         """setup_router() publica las 2 Agent Cards (web_researcher + query_builder)."""
-        from src.hat.ledger.repository import LedgerRepository
+        from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
 
         router = benchmark_module.setup_router()
         repo = LedgerRepository()

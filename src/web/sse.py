@@ -10,7 +10,7 @@ from datetime import datetime as _dt
 
 from flask import Blueprint, current_app
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.web.helpers import login_required
 from src.workflow.repository import WorkflowRepository
 

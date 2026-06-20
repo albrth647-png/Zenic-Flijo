@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging("airgap")
 
@@ -181,7 +181,7 @@ class AirGapConfig:
         import hashlib
         import hmac
 
-        from src.config import LICENSE_SECRET_KEY
+        from src.core.config import LICENSE_SECRET_KEY
 
         output = output_path or self.license_file
 
@@ -222,7 +222,7 @@ class AirGapConfig:
         import hashlib
         import hmac
 
-        from src.config import LICENSE_SECRET_KEY
+        from src.core.config import LICENSE_SECRET_KEY
 
         path = Path(license_path or self.license_file)
         if not path.exists():
@@ -339,7 +339,7 @@ class AirGapConfig:
         """Check if local AI (Ollama) is available."""
         try:
             # Resolver path absoluto para mitigar B607 (PATH injection).
-            from src.utils.helpers import resolve_binary
+            from src.core.utils import resolve_binary
             ollama_bin = resolve_binary("ollama", allow_none=True)
             if ollama_bin is None:
                 logger.warning("AirGap: Local AI (Ollama) not available (not in PATH)")
@@ -359,7 +359,7 @@ class AirGapConfig:
     def _check_local_db(self) -> bool:
         """Verify local database connectivity."""
         try:
-            from src.data.database_manager import DatabaseManager
+            from src.core.db import DatabaseManager
             db = DatabaseManager()
             conn = db.get_connection()
             conn.execute("SELECT 1")
@@ -371,7 +371,7 @@ class AirGapConfig:
 
     def _check_writable_storage(self) -> bool:
         """Verify local storage is writable."""
-        from src.config import DATA_DIR
+        from src.core.config import DATA_DIR
         try:
             test_file = Path(DATA_DIR) / ".airgap_test"
             test_file.write_text("ok")

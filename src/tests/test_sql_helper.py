@@ -14,7 +14,7 @@ import sqlite3
 
 import pytest
 
-from src.utils.sql import (
+from src.core.db import (
     build_in_clause,
     build_update_query,
     quote_identifier,

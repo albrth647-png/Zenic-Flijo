@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api_v2.auth import require_permission
 from src.api_v2.dependencies import get_db, get_tenant_service
-from src.data.user_repository import UserRepository
+from src.core.repositories import UserRepository
 from src.api_v2.models import (
     ErrorResponse,
     TenantCreate,
@@ -33,7 +33,7 @@ from src.api_v2.models import (
     TenantUserCreate,
     TenantUserResponse,
 )
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

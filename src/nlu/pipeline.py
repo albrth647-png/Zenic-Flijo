@@ -52,7 +52,7 @@ from src.nlu.normalizer import normalize
 from src.nlu.slot_filler import SlotFiller
 from src.nlu.tokenizer import tokenize
 from src.nlu.validator import WorkflowValidator
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -255,6 +255,8 @@ class Pipeline:
         Returns:
             NLUResult con tokens, entidades, intenciones, slots y traza
         """
+        import time as _time_mod
+        _nlu_start = _time_mod.monotonic()
         trace: list[str] = []
 
         # ── Etapa 1: Normalizer ───────────────────────────
@@ -292,7 +294,7 @@ class Pipeline:
         # ── Confidence: usar el score de la mejor intención ──
         confidence = intents[0].score if intents else 0.0
 
-        return NLUResult(
+        result = NLUResult(
             text=text,
             lang=detected_lang,
             tokens=tuple(tokens),
@@ -302,6 +304,22 @@ class Pipeline:
             confidence=confidence,
             trace=tuple(trace),
         )
+
+        # M10.4 — Metrics: best-effort, nunca romper el flujo principal.
+        try:
+            from src.core.observability.telemetry import TelemetryService
+            intent_name = (
+                intents[0].intent if intents else "unknown"
+            )
+            TelemetryService().record_nlu_result(
+                intent=intent_name,
+                confidence=float(confidence) if confidence is not None else 0.0,
+                duration=float(_time_mod.monotonic() - _nlu_start),
+            )
+        except Exception:
+            pass
+
+        return result
 
     def simulate(
         self,

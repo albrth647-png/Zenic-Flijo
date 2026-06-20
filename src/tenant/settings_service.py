@@ -10,7 +10,7 @@ Thin wrapper que delega en TenantService para compatibilidad total.
 from __future__ import annotations
 
 from src.tenant.service import TenantService
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

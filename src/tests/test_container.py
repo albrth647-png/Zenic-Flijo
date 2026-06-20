@@ -254,7 +254,7 @@ class TestSetupDefaultContainer:
         container.clear()
         setup_default_container()
 
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
 
         db = container.resolve("db")
         assert isinstance(db, DatabaseManager)

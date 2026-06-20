@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.data.database_manager import DatabaseManager
-from src.hat.ledger.repository import LedgerRepository
+from src.core.db import DatabaseManager
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
 
 
 @pytest.fixture(scope="module")

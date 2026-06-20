@@ -30,7 +30,7 @@ from src.api_v2.models import (
     MarketplaceCategory,
     MarketplaceStats,
 )
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.workflow.repository import WorkflowDefinition, WorkflowRepository
 from src.workflow.workflow_templates import (
     get_template,

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.hat.orbital_n0.intent_hasher import compute_intent_hash, normalize_intent
+from src.hat.level1_orchestrator.intent.hasher import compute_intent_hash, normalize_intent
 
 
 class TestNormalizeIntent:

@@ -36,12 +36,12 @@ import threading
 import uuid
 from typing import Any
 
-from src.data.database_manager import DatabaseManager
-from src.data.redis_service import RedisService
+from src.core.db import DatabaseManager
+from src.core.db import RedisService
 from src.tenant.features import TenantFeatureManager
 from src.tenant.storage import TENANT_PLANS, TenantConnectionPool, TenantStorageProvisioner
-from src.utils.logger import setup_logging
-from src.utils.sql import quote_identifier
+from src.core.logging import setup_logging
+from src.core.db import quote_identifier
 
 logger = setup_logging(__name__)
 

@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from src.hat.ledger.repository import LedgerRepository
-from src.data.database_manager import DatabaseManager
+from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
+from src.core.db import DatabaseManager
 
 REPO_ROOT = Path(__file__).resolve().parents[3]  # /home/z/my-project/repos/Zenic-Flujo
 

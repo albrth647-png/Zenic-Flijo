@@ -22,8 +22,8 @@ from typing import ClassVar
 
 from src.orbital.context import OrbitalContext
 from src.orbital.models import TWO_PI
-from src.utils.helpers import safe_get
-from src.utils.logger import setup_logging
+from src.core.utils import safe_get
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

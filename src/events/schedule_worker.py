@@ -13,11 +13,11 @@ import sqlite3
 import threading
 from datetime import datetime
 
-from src.config import SCHEDULE_INTERVAL_SECONDS
-from src.data.database_manager import DatabaseManager
+from src.core.config import SCHEDULE_INTERVAL_SECONDS
+from src.core.db import DatabaseManager
 from src.events.bus import EventBus
-from src.utils.helpers import parse_cron_expression, should_run_now
-from src.utils.logger import setup_logging
+from src.core.utils import parse_cron_expression, should_run_now
+from src.core.logging import setup_logging
 from src.workflow.repository import WorkflowRepository
 
 logger = setup_logging(__name__)

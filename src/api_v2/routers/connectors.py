@@ -34,7 +34,7 @@ from src.api_v2.models import (
     ConnectorTestResponse,
     ErrorResponse,
 )
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -104,7 +104,7 @@ async def configure_connector(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Conector '{name}' no encontrado")
 
     # Almacenar configuracion cifrada en BD
-    from src.security.encryption import encrypt_value
+    from src.core.security.encryption import encrypt_value
 
     encrypted_credentials = {}
     for key, value in config_data.credentials.items():

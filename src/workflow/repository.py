@@ -10,11 +10,11 @@ Agrega conversion automatica a definiciones orbitales via OrbitalRepository.
 import json
 from datetime import datetime
 
-from src.config import FREE_TIER_MAX_WORKFLOWS
-from src.data.database_manager import DatabaseManager
-from src.utils.helpers import now_iso
-from src.utils.logger import setup_logging
-from src.utils.sql import build_update_query
+from src.core.config import FREE_TIER_MAX_WORKFLOWS
+from src.core.db import DatabaseManager
+from src.core.utils import now_iso
+from src.core.logging import setup_logging
+from src.core.db import build_update_query
 
 logger = setup_logging(__name__)
 

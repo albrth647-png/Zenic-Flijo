@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.workflow.step_executor import StepResult
 
 # Fix Sprint 4 bug #52: centralizado en constants.py
@@ -31,7 +31,7 @@ class SubworkflowExecutionService:
 
     def execute(self, step: dict, context: dict) -> StepResult:
         """Ejecuta un paso de tipo subworkflow."""
-        from src.utils.helpers import resolve_variables
+        from src.core.utils import resolve_variables
         from src.workflow.engine import WorkflowEngine
 
         start_time = time.time()

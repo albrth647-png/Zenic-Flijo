@@ -17,7 +17,7 @@ import time
 from src.events.bus import EventBus
 from src.orbital.context import OrbitalContext
 from src.orbital.models import DEFAULT_THRESHOLD, RETROFEEDBACK_DAMPING
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 from src.workflow.branch_handler import BranchHandler
 from src.workflow.condition_evaluator import ConditionEvaluator
 from src.workflow.execution.async_executor import AsyncExecutionService
@@ -154,6 +154,17 @@ class WorkflowEngine:
 
         # 2-4. Crear ejecucion y preparar contexto
         execution = self._repository.create_execution(workflow_id, trigger_data)
+
+        # M10.4 — Metrics: best-effort, nunca romper el flujo principal.
+        try:
+            from src.core.observability.telemetry import TelemetryService
+            TelemetryService().record_workflow_start(
+                workflow_id=workflow_id,
+                execution_id=execution.id,
+            )
+        except Exception:
+            pass  # metrics are best-effort
+
         orbital_engine = self._ctx.engine
         # Fix Sprint 3 bug #49: antes continue_on_error estaba hardcoded a False.
         # Ahora lee la config del WorkflowDefinition (default False para safe).
@@ -267,6 +278,18 @@ class WorkflowEngine:
         # Fuera del lock: limpiar el lock de este execution_id para evitar memory leak
         self._cleanup_execution_lock(execution.id)
 
+        # M10.4 — Metrics: best-effort, nunca romper el flujo principal.
+        try:
+            from src.core.observability.telemetry import TelemetryService
+            TelemetryService().record_workflow_end(
+                workflow_id=workflow_id,
+                execution_id=execution.id,
+                status=final_status,
+                duration=duration / 1000.0,
+            )
+        except Exception:
+            pass
+
         return ExecutionResult(
             execution_id=execution.id, workflow_id=workflow_id, status=final_status,
             duration_ms=duration, step_results=step_results, error_message=error_message,
@@ -344,7 +367,7 @@ class WorkflowEngine:
         if self._settings_cache and (now - self._settings_cache_ts) < cache_ttl:
             return self._settings_cache
 
-        from src.data.database_manager import DatabaseManager
+        from src.core.db import DatabaseManager
         db = DatabaseManager()
         rows = db.fetchall("SELECT key, value FROM settings")
         self._settings_cache = {row["key"]: row["value"] for row in rows}

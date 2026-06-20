@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging("soc2_type_ii")
 
@@ -223,7 +223,7 @@ class SOC2TypeIIManager:
 
     def __init__(self, db_path: str = None) -> None:
         if db_path is None:
-            from src.config import COMPLIANCE_DB_PATH
+            from src.core.config import COMPLIANCE_DB_PATH
             db_path = str(COMPLIANCE_DB_PATH)
         self._db_path = db_path
         self._periods: dict[str, MonitoringPeriod] = {}

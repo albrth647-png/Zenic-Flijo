@@ -27,7 +27,7 @@ def login_admin(client):
     """Helper: hacer login como admin en la app de test."""
     import bcrypt
 
-    from src.data.database_manager import DatabaseManager
+    from src.core.db import DatabaseManager
 
     db = DatabaseManager()
     # Siempre forzar password conocido
@@ -272,7 +272,7 @@ class TestAuthSecurity:
 
         app = get_test_app()
         with app.test_client() as client:
-            from src.data.database_manager import DatabaseManager
+            from src.core.db import DatabaseManager
 
             db = DatabaseManager()
             import bcrypt

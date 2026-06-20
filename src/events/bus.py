@@ -22,7 +22,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

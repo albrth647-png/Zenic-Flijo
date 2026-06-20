@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.data.redis_service import RedisService
+from src.core.db import RedisService
 from src.marketplace.certification import CertificationEngine, CertificationStatus
 from src.marketplace.repository import ConnectorRepository
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

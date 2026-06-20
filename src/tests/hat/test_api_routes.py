@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.hat.api.routes import router as hat_router
+from src.hat.level1_orchestrator.api.routes import router as hat_router
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def client(app):
 @pytest.fixture(autouse=True)
 def cleanup_singletons():
     """Reset singletons entre tests — LIMPIA todas las variables OVC."""
-    from src.agents.orchestrator import MultiAgentOrchestrator
+    from src.hat.agents_legacy.orchestrator import MultiAgentOrchestrator
     from src.orbital.context import OrbitalContext
 
     # Reset completo del singleton OrbitalContext
@@ -296,7 +296,7 @@ class TestChatIntegration:
     def test_chat_e2e_persists_to_ledger(self, client):
         """El dispatch debe quedar registrado en el Ledger."""
         from datetime import datetime, timezone
-        from src.hat.ledger.repository import LedgerRepository
+        from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
 
         ts = datetime.now(timezone.utc).strftime("%H%M%S%f")
         user_id = f"persist_user_{ts}"

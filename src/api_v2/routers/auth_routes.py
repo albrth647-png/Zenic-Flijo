@@ -35,9 +35,9 @@ from src.api_v2.models import (
     TokenRequest,
     TokenResponse,
 )
-from src.data.audit_repository import AuditRepository
-from src.data.user_repository import UserRepository
-from src.utils.logger import setup_logging
+from src.core.repositories import AuditRepository
+from src.core.repositories import UserRepository
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -165,7 +165,7 @@ async def refresh_token(
     db: Any = Depends(get_db),
 ) -> TokenResponse:
     """Refresca el token de acceso usando un refresh token."""
-    from src.data.user_repository import UserRepository
+    from src.core.repositories import UserRepository
 
     payload = validate_token(request.refresh_token)
     if not payload:

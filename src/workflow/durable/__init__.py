@@ -14,8 +14,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from src.data.database_manager import DatabaseManager
-from src.utils.logger import setup_logging
+from src.core.db import DatabaseManager
+from src.core.logging import setup_logging
 from src.workflow.durable.checkpoints import (
     create_snapshot,
     get_state,

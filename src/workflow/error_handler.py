@@ -22,7 +22,7 @@ import random
 import time
 from collections.abc import Callable
 
-from src.config import ERROR_BASE_DELAY_SECONDS, ERROR_MAX_RETRIES, ERROR_RETRY_MULTIPLIER, ERROR_USE_FALLBACK
+from src.core.config import ERROR_BASE_DELAY_SECONDS, ERROR_MAX_RETRIES, ERROR_RETRY_MULTIPLIER, ERROR_USE_FALLBACK
 
 # Fix Sprint 4 bug #50: sembrar random con seed configurable para reproducibilidad en tests.
 # Si WFD_ERROR_HANDLER_RANDOM_SEED está seteada, usar ese seed; si no, usar None (no sembrarlo,
@@ -38,7 +38,7 @@ if _ERROR_RANDOM_SEED:
 _error_rng = random.Random(_ERROR_RANDOM_SEED if _ERROR_RANDOM_SEED else None)
 from src.orbital.context import OrbitalContext
 from src.orbital.models import TWO_PI
-from src.utils.logger import setup_logging
+from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
