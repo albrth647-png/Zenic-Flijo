@@ -96,6 +96,24 @@ def create_app() -> Flask:
             return app.send_static_file("spa/index.html")
         return jsonify({"error": "SPA not built yet. Run: cd frontend && npm run build"}), 503
 
+    # SPA catch-all: todas las rutas que no sean /api/* o /static/*
+    # sirven el index.html para que React Router maneje el routing client-side.
+    # Esto arregla el 404 en /admin, /invoices, /inventory, /reports, etc.
+    @app.route("/<path:spa_route>")
+    def spa_catch_all(spa_route: str):
+        """Catch-all para rutas del SPA (React Router).
+
+        Cualquier ruta que no sea /api/*, /static/*, /metrics, /login
+        sirve el index.html del SPA para que React Router la maneje.
+        """
+        # No interceptar rutas de API, static, o endpoints conocidos
+        if spa_route.startswith(("api/", "static/", "metrics")):
+            return jsonify({"error": "Not found"}), 404
+        spa_path = Path(__file__).parent / "static" / "spa" / "index.html"
+        if spa_path.exists():
+            return app.send_static_file("spa/index.html")
+        return jsonify({"error": "SPA not built"}), 503
+
     # ── M10.3: /metrics endpoint (Prometheus, NO auth) ───────
     # Expuesto sin autenticación para que los scrape configs de k8s/helm
     # puedan leerlo con una ServiceMonitor básica. El endpoint admin

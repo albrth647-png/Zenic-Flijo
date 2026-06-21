@@ -69,17 +69,16 @@ class DatabaseManager(DatabaseInterface):
     # ── Conexion ─────────────────────────────────────────────
 
     def get_connection(self) -> sqlite3.Connection:
-        """Obtiene una conexion SQLite (una por hilo)."""
+        """Obtiene una conexion SQLite (una por hilo, WAL mode + busy_timeout)."""
         if not hasattr(self._local, "connection") or self._local.connection is None:
-            conn = sqlite3.connect(str(self._db_path))
+            conn = sqlite3.connect(str(self._db_path), timeout=30)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
-            conn.execute("PRAGMA busy_timeout=5000")
-            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
             self._local.connection = conn
             if self._initialized:
-                logger.debug("Nueva conexion SQLite creada con foreign_keys=ON")
+                logger.debug("Nueva conexion SQLite WAL creada (busy_timeout=30s)")
         return self._local.connection
 
     def close_connection(self) -> None:

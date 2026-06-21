@@ -207,12 +207,50 @@ def main():
     # 2. Registrar herramientas de negocio (con event_bus inyectado)
     register_tools(event_bus)
 
+    # 2a. Seed: crear datos de demostración si la DB está vacía
+    try:
+        existing_leads = db.fetchall("SELECT COUNT(*) as count FROM leads")
+        if existing_leads and existing_leads[0]["count"] == 0:
+            demo_leads = [
+                ("Juan Pérez", "juan.perez@email.com", "555-0101", "TechCorp", "new"),
+                ("María García", "maria.garcia@email.com", "555-0102", "InnovateLLC", "contacted"),
+                ("Carlos López", "carlos.lopez@email.com", "555-0103", "BuildInc", "qualified"),
+                ("Ana Martínez", "ana.martinez@email.com", "555-0104", "DataSoft", "new"),
+                ("Pedro Sánchez", "pedro.sanchez@email.com", "555-0105", "CloudOps", "contacted"),
+            ]
+            for name, email, phone, company, stage in demo_leads:
+                db.execute(
+                    "INSERT INTO leads (name, email, phone, company, stage, source, user_id) "
+                    "VALUES (?, ?, ?, ?, ?, 'manual', 1)",
+                    (name, email, phone, company, stage),
+                )
+            db.commit()
+            logger.info(f"Seed: {len(demo_leads)} leads de demostración creados")
+
+            # Demo products
+            demo_products = [
+                ("W001", "Widget Premium", "Widget de alta calidad", "General", 50, 10, 29.99),
+                ("G001", "Gadget Pro", "Gadget profesional", "Electrónica", 25, 5, 49.99),
+                ("T001", "ToolKit Basic", "Kit de herramientas básico", "Herramientas", 100, 20, 99.99),
+            ]
+            for sku, name, desc, cat, stock, min_stock, price in demo_products:
+                db.execute(
+                    "INSERT INTO products (sku, name, description, category, stock, min_stock, price, user_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+                    (sku, name, desc, cat, stock, min_stock, price),
+                )
+            db.commit()
+            logger.info(f"Seed: {len(demo_products)} productos de demostración creados")
+    except Exception as seed_data_err:
+        logger.warning(f"Seed datos demo: {seed_data_err}")
+
     # 2b. Inicializar HAT (5 niveles de orquestación con ORBITAL como cerebro central)
-    # bootstrap_hat() inicializa: Tools → Workers → Specialists → Supervisors → HATRouter
+    # get_hat_router() inicializa: Tools → Workers → Specialists → Supervisors → HATRouter
+    # Y guarda el singleton en _cached_router para que Flask y FastAPI lo reutilicen.
     # ORBITAL ejecuta el ciclo completo (OVC→TOR→RCC→COD→Espectro→Retro) por cada request.
     try:
-        from src.hat import bootstrap_hat
-        hat_router = bootstrap_hat(event_bus=event_bus)
+        from src.hat import get_hat_router
+        hat_router = get_hat_router(event_bus=event_bus)
         logger.info(
             "HAT inicializado: 1 HATRouter + 3 Supervisores + 9 Specialists "
             "+ ~59 Workers + 80 Tools (19 nativas + 61 conectores)"
