@@ -1,65 +1,79 @@
-"""HAT-ORBITAL Nivel 1 — Orbital Router (extraído de tick_router.py en M8).
+"""HAT-ORBITAL Nivel 1 — Orbital Router (cerebro central de routing).
 
-Routing por resonancia ORBITAL: inyecta el user_intent como variable OVC,
-calcula TOR entre el intent y cada Agent Card publicada, agrupa por dominio,
-y retorna el top-3 dominios con mayor resonancia promedio normalizada.
+Phase 1: ORBITAL ejecuta su ciclo COMPLETO por cada request:
+  OVC → TOR → RCC → COD → Espectro → Retro → OVC
 
-Esta clase es la **capa de routing orbital pura** — no conoce supervisores,
-ni FSM, ni anti-dup. Solo conoce OVC, TOR y Agent Cards.
+El router ya no calcula TOR manualmente. Ahora:
+1. Crea la variable user_intent en el OVC.
+2. Registra un ciclo RCC por cada dominio (intent + agent_cards del dominio).
+3. Ejecuta ``ctx.run_tick()`` — el motor ORBITAL procesa el ciclo completo:
+   - TOR calcula tensiones entre todas las variables.
+   - RCC detecta resonancia en cada ciclo de dominio.
+   - COD colapsa las fases a un estado determinista estable.
+   - Espectro genera la salida multimodal (modo primario = dominio ganador).
+   - Retro: el Espectro retroalimenta el OVC para el próximo tick.
+4. Lee los resultados RCC de cada ciclo de dominio.
+5. Limpia los ciclos de routing (no persisten entre requests).
+6. Retorna top-N dominios por resonance_strength.
+
+Esto hace que ORBITAL sea el **cerebro central** de HAT — cada request
+pasa por el motor determinista completo, no solo por una calculadora de TOR.
 
 Diseño:
-- Stateless entre calls (limpia la variable user_intent al inicio de cada route()).
-- Namespacing por session_id para evitar cross-session pollution (fix sistémico #1).
-- Filtra cards por ``metadata.type == 'agent_card'`` (fix sistémico #2 — soporta
-  cualquier naming convention: ``card_<id>`` o ``hat_<sess>__card_<id>``).
+- Stateless entre calls (limpia variables y ciclos al inicio de cada route()).
+- Namespacing por session_id para evitar cross-session pollution.
+- Filtra cards por ``metadata.type == 'agent_card'``.
+- Fallback graceful: si run_tick falla, usa cálculo TOR manual (compat).
 
-Implementado en M8 siguiendo IMPLEMENTATION_PLAN.md §M8.
+Implementado en Phase 1 (ORBITAL como cerebro central).
 """
 from __future__ import annotations
 
 import contextlib
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.orbital.context import OrbitalContext
 
+logger = logging.getLogger(__name__)
 
 # ── Constantes ──────────────────────────────────────────────────────────
-# Orbit group para variables de routing (separadas de facts/hypotheses).
 ROUTING_ORBIT_GROUP: str = "hat_routing"
-
-# Metadata type para variables de user_intent (distinto de 'fact', 'hypothesis', 'agent_card').
 INTENT_VAR_TYPE: str = "user_intent"
-
-# Cuántos dominios retornar en el top-N.
 TOP_N_DOMAINS: int = 3
 
-# Parámetros orbitales del user_intent (constantes — el intent no orbita solo,
-# solo genera TOR con las cards).
+# Parámetros orbitales del user_intent.
 INTENT_THETA: float = 0.0
 INTENT_AMPLITUDE: float = 1.0
 INTENT_VELOCITY: float = 0.1
 
+# Umbral de resonancia RCC para ciclos de routing (0.0 = detectar cualquier resonancia).
+ROUTING_CYCLE_THRESHOLD: float = 0.0
+
+# Damping para retroalimentación del Espectro (0.3 = moderado).
+RETROFEED_DAMPING: float = 0.3
+
 
 class OrbitalRouter:
-    """Router por resonancia ORBITAL — extrae lógica de tick_router.py.
+    """Router por resonancia ORBITAL — cerebro central de routing de HAT.
 
-    Recibe un ``OrbitalContext`` (singleton) y un ``session_id`` para
-    namespacing. El método principal es :meth:`route`, que retorna el
-    top-N dominios ordenados por resonancia descendente.
+    Ejecuta el ciclo ORBITAL completo (OVC→TOR→RCC→COD→Espectro→Retro)
+    en cada llamada a :meth:`route`. El motor determinista procesa el
+    user_intent junto con las Agent Cards y produce un estado convergido
+    que determina el dominio ganador.
 
     Attributes:
         _ctx: OrbitalContext singleton (OVC + TOR + RCC + COD + Espectro).
-        _session_id: ID de la sesión actual (para namespacing de variables).
+        _session_id: ID de la sesión actual (para namespacing).
     """
 
     def __init__(self, ctx: OrbitalContext, session_id: str = "default") -> None:
         """Inicializa el router con contexto orbital y sesión.
 
         Args:
-            ctx: OrbitalContext singleton. Debe tener ``ovc`` y ``tor``.
-            session_id: ID de la sesión. Se sanitiza para usar como prefijo
-                de nombres de variables OVC (no alfanuméricos → '_').
+            ctx: OrbitalContext singleton con los 5 pilares.
+            session_id: ID de la sesión (se sanitiza para namespacing).
         """
         self._ctx = ctx
         self._session_id = session_id
@@ -67,95 +81,233 @@ class OrbitalRouter:
     # ── API pública ────────────────────────────────────────────────────
 
     def set_session(self, session_id: str) -> None:
-        """Actualiza el session_id (debe llamarse al inicio de cada handle()).
-
-        Args:
-            session_id: ID de la sesión actual.
-        """
+        """Actualiza el session_id (llamar al inicio de cada handle())."""
         self._session_id = session_id
 
     def route(self, message: str) -> list[tuple[str, float]]:
-        """Rutea un mensaje del usuario al top-N dominios por resonancia.
+        """Rutea un mensaje ejecutando el ciclo ORBITAL completo.
 
-        Flujo:
-        1. Limpiar variable user_intent previa de esta sesión (si existe).
-        2. Crear variable OVC ``hat_<sess>__user_intent_current`` con el mensaje.
-        3. Recolectar Agent Cards agrupadas por dominio.
-        4. Para cada dominio, calcular resonancia promedio normalizada.
-        5. Retornar top-N dominios ordenados desc.
+        Flujo (Phase 1 — ORBITAL como cerebro central):
+        1. Crear variable OVC user_intent con el mensaje.
+        2. Recolectar Agent Cards agrupadas por dominio.
+        3. Registrar un ciclo RCC por dominio (intent + cards del dominio).
+        4. Ejecutar ``ctx.run_tick()`` — ciclo completo OVC→TOR→RCC→COD→Espectro→Retro.
+        5. Leer resonance_strength de cada ciclo RCC (post-COD, post-Espectro).
+        6. Limpiar ciclos de routing (no persisten entre requests).
+        7. Retornar top-N dominios ordenados desc.
 
         Args:
             message: Texto del usuario (se almacena en metadata, no se parsea).
 
         Returns:
             Lista de tuplas ``(domain, resonance_strength)`` ordenada desc.
-            Vacía si no hay Agent Cards registradas en el OVC.
-            ``resonance_strength`` está en [0.0, 1.0].
+            Vacía si no hay Agent Cards. ``resonance_strength`` en [0.0, 1.0].
         """
         intent_var_name = self.get_intent_var_name()
 
-        # 1. Limpiar variable de ruteo anterior de esta sesión
+        # 1. Limpiar variable user_intent previa y crear la nueva
         self._clear_intent_variable(intent_var_name)
-
-        # 2. Crear variable orbital para el user_intent (namespaced)
         self._create_intent_variable(intent_var_name, message)
 
-        # 3. Recolectar Agent Cards por dominio
+        # 2. Recolectar Agent Cards por dominio
         cards_by_domain = self.collect_cards_by_domain()
         if not cards_by_domain:
             return []
 
-        # 4. Para cada dominio, calcular resonancia con user_intent
+        # 3. Registrar ciclos RCC por dominio
+        cycle_names = self._register_routing_cycles(
+            intent_var_name, cards_by_domain,
+        )
+
+        # 4. Ejecutar ciclo ORBITAL completo
+        #    OVC advance → TOR matrix → RCC detect → COD collapse → Espectro → Retro
+        try:
+            orbital_result = self._ctx.run_tick(
+                dt=1.0, retrofeed_damping=RETROFEED_DAMPING,
+            )
+            logger.info(
+                "OrbitalRouter: run_tick completado — tick=%d, "
+                "TOR=%d, RCC=%d, COD=%d, espectro_modes=%d",
+                orbital_result.tick,
+                len(orbital_result.tor_results),
+                len(orbital_result.rcc_results),
+                len(orbital_result.cod_results),
+                len(orbital_result.espectro.modes) if orbital_result.espectro else 0,
+            )
+        except Exception as exc:
+            logger.warning(
+                "OrbitalRouter: run_tick falló (%s), usando fallback TOR manual", exc,
+            )
+            # Fallback: usar cálculo TOR manual (compat con comportamiento anterior)
+            resonances = self._fallback_tor_routing(intent_var_name, cards_by_domain)
+            self._cleanup_routing_cycles(cycle_names)
+            return resonances
+
+        # 5. Leer resonance_strength de cada ciclo RCC
+        resonances = self._read_domain_resonances(cycle_names)
+
+        # 6. Limpiar ciclos de routing (no persisten entre requests)
+        self._cleanup_routing_cycles(cycle_names)
+
+        # 7. Ordenar desc y tomar top-N
+        resonances.sort(key=lambda x: x[1], reverse=True)
+        return resonances[:TOP_N_DOMAINS]
+
+    # ── Registro de ciclos RCC ─────────────────────────────────────────
+
+    def _register_routing_cycles(
+        self,
+        intent_var_name: str,
+        cards_by_domain: dict[str, list[str]],
+    ) -> dict[str, str]:
+        """Registra un ciclo RCC por dominio en el motor ORBITAL.
+
+        Cada ciclo contiene: [user_intent_var] + [card_vars del dominio].
+        El RCC detectará resonancia entre el intent y las cards del dominio.
+        El COD colapsará las fases a un estado determinista.
+        El Espectro generará el modo primario (dominio ganador).
+
+        Args:
+            intent_var_name: Nombre de la variable OVC del user_intent.
+            cards_by_domain: Dict domain → lista de nombres de variables OVC.
+
+        Returns:
+            Dict domain → cycle_name (para lookup y cleanup posterior).
+        """
+        cycle_names: dict[str, str] = {}
+        safe_session = self._sanitize_session_id(self._session_id)
+
+        for domain, card_vars in cards_by_domain.items():
+            cycle_name = f"routing_{domain}_{safe_session}"
+            all_vars = [intent_var_name] + card_vars
+            try:
+                self._ctx.rcc.register_cycle_from_names(
+                    cycle_name, all_vars, threshold=ROUTING_CYCLE_THRESHOLD,
+                )
+                cycle_names[domain] = cycle_name
+                logger.debug(
+                    "OrbitalRouter: ciclo RCC registrado '%s' con %d variables",
+                    cycle_name, len(all_vars),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "OrbitalRouter: no se pudo registrar ciclo '%s': %s",
+                    cycle_name, exc,
+                )
+
+        return cycle_names
+
+    def _read_domain_resonances(
+        self,
+        cycle_names: dict[str, str],
+    ) -> list[tuple[str, float]]:
+        """Lee la resonance_strength de cada ciclo RCC de dominio.
+
+        Después de ``run_tick()``, cada ciclo tiene su ``resonance_level``
+        actualizado por el RCC (detect_all). El COD puede haber ajustado
+        las fases, pero el resonance_level refleja el estado post-detección.
+
+        Args:
+            cycle_names: Dict domain → cycle_name.
+
+        Returns:
+            Lista de tuplas (domain, resonance_strength) con valores en [0, 1].
+        """
+        resonances: list[tuple[str, float]] = []
+
+        for domain, cycle_name in cycle_names.items():
+            resonance = self._read_cycle_resonance(cycle_name)
+            resonances.append((domain, resonance))
+
+        return resonances
+
+    def _read_cycle_resonance(self, cycle_name: str) -> float:
+        """Lee el resonance_level de un ciclo RCC por nombre.
+
+        Busca el ciclo en el RCC por su nombre (no por UUID) y retorna
+        su ``resonance_level``, que fue seteado durante ``detect_all()``.
+
+        Args:
+            cycle_name: Nombre del ciclo a buscar.
+
+        Returns:
+            Resonance strength en [0.0, 1.0]. 0.0 si no se encuentra.
+        """
+        rcc = self._ctx.rcc
+        # Iterar sobre los ciclos registrados en el RCC
+        for cycle in rcc._cycles.values():
+            if cycle.name == cycle_name:
+                # resonance_level fue seteado por detect_all() durante run_tick
+                return min(max(cycle.resonance_level, 0.0), 1.0)
+        return 0.0
+
+    def _cleanup_routing_cycles(self, cycle_names: dict[str, str]) -> None:
+        """Elimina los ciclos de routing del RCC después de cada route().
+
+        Los ciclos de routing son efímeros — no persisten entre requests.
+        Esto evita acumulación de ciclos fantasma (bug Sprint 1 #3).
+
+        Args:
+            cycle_names: Dict domain → cycle_name a eliminar.
+        """
+        rcc = self._ctx.rcc
+        for cycle_name in cycle_names.values():
+            rcc.remove_cycles_by_name(cycle_name)
+
+        # Limpiar cache TOR para que no queden entradas stale
+        tor = self._ctx.tor
+        if hasattr(tor, "clear_cache"):
+            tor.clear_cache()
+
+    # ── Fallback: cálculo TOR manual (compat) ──────────────────────────
+
+    def _fallback_tor_routing(
+        self,
+        intent_var_name: str,
+        cards_by_domain: dict[str, list[str]],
+    ) -> list[tuple[str, float]]:
+        """Fallback: cálculo TOR manual si run_tick falla.
+
+        Este es el comportamiento anterior a Phase 1 — calcula TOR
+        directamente sin pasar por RCC/COD/Espectro. Se usa solo
+        como safety net si el motor ORBITAL completo falla.
+
+        Args:
+            intent_var_name: Nombre de la variable OVC del user_intent.
+            cards_by_domain: Dict domain → card_vars.
+
+        Returns:
+            Lista de tuplas (domain, resonance) ordenada desc, top-N.
+        """
         resonances: list[tuple[str, float]] = [
             (domain, self.compute_domain_resonance(domain, card_vars))
             for domain, card_vars in cards_by_domain.items()
         ]
-
-        # 5. Ordenar desc y tomar top-N
         resonances.sort(key=lambda x: x[1], reverse=True)
         return resonances[:TOP_N_DOMAINS]
 
     # ── Helpers de namespacing ─────────────────────────────────────────
 
     def get_intent_var_name(self) -> str:
-        """Retorna el nombre namespaced de la variable OVC de user_intent.
-
-        Fix sistémico #1: cada sesión tiene su propia variable user_intent
-        en vez de una global, evitando cross-session pollution.
-
-        Returns:
-            Nombre en formato ``'hat_<sanitized_session_id>__user_intent_current'``.
-        """
+        """Retorna el nombre namespaced de la variable OVC de user_intent."""
         safe_id = self._sanitize_session_id(self._session_id)
         return f"hat_{safe_id}__user_intent_current"
 
     @staticmethod
     def _sanitize_session_id(session_id: str) -> str:
-        """Sanitiza un session_id para usar como parte de nombre de variable OVC.
-
-        Caracteres no alfanuméricos se reemplazan por ``_``.
-
-        Args:
-            session_id: ID crudo de la sesión.
-
-        Returns:
-            ID sanitizado (solo alfanum + _).
-        """
+        """Sanitiza un session_id (no alfanuméricos → '_')."""
         return "".join(c if c.isalnum() else "_" for c in str(session_id))
 
     # ── Helpers de variables OVC ───────────────────────────────────────
 
     def _clear_intent_variable(self, intent_var_name: str) -> None:
-        """Elimina la variable user_intent previa de esta sesión (si existe)."""
+        """Elimina la variable user_intent previa de esta sesión."""
         existing = self._ctx.ovc.get_variable(intent_var_name)
         if existing is not None:
             self._ctx.ovc.delete_variable(intent_var_name)
 
     def _create_intent_variable(self, intent_var_name: str, message: str) -> None:
-        """Crea la variable OVC user_intent para esta sesión.
-
-        Idempotente: si ya existe (race condition rara), se ignora el error.
-        """
+        """Crea la variable OVC user_intent para esta sesión."""
         with contextlib.suppress(ValueError):
             self._ctx.ovc.create_variable(
                 name=intent_var_name,
@@ -171,14 +323,8 @@ class OrbitalRouter:
     def collect_cards_by_domain(self) -> dict[str, list[str]]:
         """Agrupa las variables OVC de tipo agent_card por dominio.
 
-        Fix sistémico #2: filtra por ``metadata.type == 'agent_card'`` en vez
-        de por prefijo de nombre, para soportar cards con cualquier naming
-        (``publish_card`` crea ``card_<id>``, ``load_session`` crea
-        ``hat_<sess>__card_<id>``).
-
         Returns:
             Dict ``domain → lista de nombres de variables OVC``.
-            Si no hay cards, retorna dict vacío.
         """
         result: dict[str, list[str]] = {}
         for name, var in self._ctx.ovc.get_all_variables().items():
@@ -189,24 +335,16 @@ class OrbitalRouter:
             result.setdefault(domain, []).append(name)
         return result
 
-    # ── Cálculo de resonancia ──────────────────────────────────────────
+    # ── Cálculo de resonancia (fallback, usado si run_tick falla) ──────
 
     def compute_domain_resonance(
         self, domain: str, card_vars: list[str],
     ) -> float:
-        """Calcula la resonancia promedio normalizada de un dominio.
+        """Calcula resonancia manualmente via TOR (método fallback).
 
-        Usa TOR entre user_intent y cada card del dominio. La resonancia
-        final es ``total_tor / max_possible_tor``, acotada a [0, 1].
-
-        Args:
-            domain: Nombre del dominio (no se usa en el cálculo, solo para
-                logging futuro — se mantiene por simetría con la API).
-            card_vars: Nombres de variables OVC de las cards del dominio.
-
-        Returns:
-            Resonancia en [0.0, 1.0]. ``0.0`` si no hay cards, si no hay
-            user_intent, o si ``max_possible <= 0``.
+        Este método se mantiene para compatibilidad y como fallback
+        cuando ``run_tick()`` falla. En operación normal, la resonancia
+        se calcula via el ciclo ORBITAL completo (RCC detect_all).
         """
         if not card_vars:
             return 0.0
@@ -227,19 +365,7 @@ class OrbitalRouter:
         user_intent: Any,
         intent_var_name: str,
     ) -> tuple[float, float]:
-        """Acumula TOR entre user_intent y cada card. Retorna ``(total, max_possible)``.
-
-        Args:
-            card_vars: Nombres de variables OVC de las cards.
-            user_intent: VariableOrbital del user_intent.
-            intent_var_name: Nombre de la variable user_intent (namespaced).
-
-        Returns:
-            Tupla ``(total_abs_tor, max_possible_tor)``.
-            - ``total_abs_tor``: suma de ``|TOR(intent, card)|`` para cards válidas.
-            - ``max_possible_tor``: suma de ``card.amplitude * intent.amplitude``
-              (upper bound teórico de TOR).
-        """
+        """Acumula TOR entre user_intent y cada card (fallback)."""
         tor = self._ctx.tor
         total = 0.0
         max_possible = 0.0
@@ -252,8 +378,6 @@ class OrbitalRouter:
                 result = tor.calculate(intent_var_name, card_var_name)
                 total += abs(result.tor_value)
             except Exception:
-                # TOR puede fallar si las variables no existen o hay conflicto
-                # de tipos — skip silencioso, no rompe el ruteo.
                 continue
         return total, max_possible
 
