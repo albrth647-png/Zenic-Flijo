@@ -64,6 +64,30 @@ class OperacionesSupervisor(SpecialistRouter):
         "oportunidad": "crm",
         "contacto": "crm",
         "negocio": "crm",
+    
+        # === CONECTORES EXTERNOS (Phase 4) ===
+        # CRM connectors → crm specialist
+        "salesforce": "crm",
+        "hubspot": "crm",
+        "pipedrive": "crm",
+        "zoho": "crm",
+        "marketo": "crm",
+        # E-commerce → inventory specialist
+        "shopify": "inventory",
+        "woocommerce": "inventory",
+        "mercadolibre": "inventory",
+        # Payments → invoice specialist
+        "paypal": "invoice",
+        "wise": "invoice",
+        "square": "invoice",
+        "quickbooks": "invoice",
+        "xero": "invoice",
+        # Fiscal → invoice specialist
+        "afip": "invoice",
+        "dte": "invoice",
+        "nfe": "invoice",
+        "sat": "invoice",
+        "totvs": "invoice",
     }
 
     def __init__(

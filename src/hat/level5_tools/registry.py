@@ -185,7 +185,28 @@ _REGISTRY: list[ToolRegistration] = [
         import_path="src.hat.level5_tools.automation.ollama_service",
         class_name="OllamaService",
     ),
+
+    # === CONECTORES EXTERNOS (Phase 4) ===
+    # 61 conectores de src/connectors/ registrados como tools de HAT.
+    # Ver src/hat/level5_tools/connectors_registry.py para el catálogo completo.
+    # Categorías: business, payments, communications, data, automation
 ]
+
+# Phase 4: Añadir conectores externos al _REGISTRY dinámicamente.
+# Esto expande HAT de 19 tools nativas a 80 tools total (19 + 61 conectores).
+try:
+    from src.hat.level5_tools.connectors_registry import CONNECTORS_REGISTRY
+    for _name, _domain, _category, _import_path, _class_name, _ebus in CONNECTORS_REGISTRY:
+        _REGISTRY.append(ToolRegistration(
+            name=_name,
+            domain=_domain,
+            category=_category,
+            import_path=_import_path,
+            class_name=_class_name,
+            requires_event_bus=_ebus,
+        ))
+except ImportError:
+    pass  # connectors_registry no disponible (ej: tests aislados)
 
 
 class ToolsRegistry:

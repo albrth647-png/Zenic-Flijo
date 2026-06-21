@@ -62,6 +62,32 @@ class DatosAutoSupervisor(SpecialistRouter):
         "data": "data",
         "datos": "data",
         "sql": "data",
+    
+        # === CONECTORES EXTERNOS (Phase 4) ===
+        "github": "code",
+        "gitlab": "code",
+        "jira": "api",
+        "asana": "api",
+        "trello": "api",
+        "monday": "api",
+        "notion": "data",
+        "confluence": "data",
+        "airtable": "data",
+        "aws": "data",
+        "azure": "data",
+        "gcs": "data",
+        "dropbox": "data",
+        "datadog": "data",
+        "grafana": "data",
+        "sentry": "data",
+        "pagerduty": "data",
+        "anthropic": "code",
+        "deepseek": "code",
+        "huggingface": "code",
+        "vault": "data",
+        "okta": "data",
+        "splunk": "data",
+        "elastic": "data",
     }
 
     def __init__(

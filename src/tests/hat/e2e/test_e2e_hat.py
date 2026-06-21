@@ -425,11 +425,11 @@ class TestWorkerFactory:
         assert "validate" in actions
 
     def test_19_tools_registered(self, hat_router):
-        """Bootstrap registra las 19 tools ZF."""
+        """Bootstrap registra 80 tools (19 nativas + 61 conectores)."""
         from src.hat.level5_tools.registry import get_tools_registry
         registry = get_tools_registry()
         tools = registry.list_all()
-        assert len(tools) == 19
+        assert len(tools) == 80  # 19 native + 61 connectors
 
     def test_tools_by_domain(self, hat_router):
         """Las tools se distribuyen en los 3 dominios."""

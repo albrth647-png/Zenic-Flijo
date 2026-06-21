@@ -77,8 +77,8 @@ class TestRegistryContents:
     """El _REGISTRY tiene las 19 tools esperadas."""
 
     def test_registry_has_19_tools(self) -> None:
-        """_REGISTRY tiene exactamente 19 entradas."""
-        assert len(_REGISTRY) == 19
+        """_REGISTRY tiene exactamente 80 entradas (19 nativas + 61 conectores)."""
+        assert len(_REGISTRY) == 80
 
     def test_all_entries_are_tool_registration(self) -> None:
         """Todas las entradas son instancias de ToolRegistration."""

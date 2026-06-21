@@ -57,6 +57,18 @@ class ComunicacionesSupervisor(SpecialistRouter):
         "cumpleanos": "notification",
         "cumpleaños": "notification",
         "birthday": "notification",
+    
+        # === CONECTORES EXTERNOS (Phase 4) ===
+        "mailgun": "email",
+        "sendgrid": "email",
+        "mailchimp": "email",
+        "discord": "chat",
+        "twilio": "chat",
+        "freshdesk": "notification",
+        "intercom": "chat",
+        "zendesk": "notification",
+        "typeform": "notification",
+        "teams": "chat",
     }
 
     def __init__(
