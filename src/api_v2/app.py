@@ -352,14 +352,12 @@ from src.api_v2.routers.bpmn import router as bpmn_router
 from src.api_v2.routers.compliance import router as compliance_router
 from src.api_v2.routers.connectors import router as connectors_router
 from src.api_v2.routers.marketplace import router as marketplace_router
-from src.api_v2.routers.nlu import router as nlu_router
 from src.api_v2.routers.tenants import router as tenants_router
 from src.api_v2.routers.workflows import router as workflows_router
 from src.mobile.api import router as mobile_router
 
 app.include_router(workflows_router)
 app.include_router(connectors_router)
-app.include_router(nlu_router)
 app.include_router(tenants_router)
 app.include_router(marketplace_router)
 app.include_router(auth_router)

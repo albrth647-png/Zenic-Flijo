@@ -1,14 +1,17 @@
-"""
-Blueprints — NLP Chat, AI Generation y NLU endpoints
-"""
+"""Blueprints — Chat (HAT) + NLU endpoints (legacy).
 
-from flask import Blueprint, jsonify, request
+Phase 3: NLU imports converted to lazy (inside functions).
+The /api/workflows/chat route uses HATRouter exclusively.
+The /api/nlu/* routes still use NLU pipeline (legacy, will be removed in future).
+"""
+import logging
+from typing import Any
 
-from src.nlu.ai_config import get_ai_config
-from src.nlu.intent_classifier import IntentClassifier
-from src.nlu.pipeline import Pipeline
-from src.nlu.templates import TEMPLATES
+from flask import Blueprint, jsonify, request, session
+
 from src.web.helpers import login_required
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("nlu", __name__)
 
@@ -16,7 +19,12 @@ bp = Blueprint("nlu", __name__)
 @bp.route("/api/nlu/understand", methods=["POST"])
 @login_required
 def api_nlu_understand():
-    """Endpoint NLU completo: análisis + compilación + simulación."""
+    """Endpoint NLU completo: análisis + compilación + simulación.
+
+    Legacy: usa NLU Pipeline. En futura versión será reemplazado por HAT.
+    """
+    from src.nlu.pipeline import Pipeline
+
     data = request.get_json() or {}
     text = data.get("text", "")
     mode = data.get("mode", "compile")
@@ -34,13 +42,22 @@ def api_nlu_understand():
             "status": "analyzed",
             "lang": result.lang,
             "confidence": result.confidence,
-            "intents": [{"intent": i.intent, "score": i.score, "evidence": i.evidence} for i in result.intents[:5]],
-            "entities": [{"type": e.type, "value": str(e.value), "raw": e.raw} for e in result.entities],
-            "slots": [{"name": s.name, "required": s.required, "filled": s.filled, "value": s.value} for s in result.slots],
+            "intents": [
+                {"intent": i.intent, "score": i.score, "evidence": i.evidence}
+                for i in result.intents[:5]
+            ],
+            "entities": [
+                {"type": e.type, "value": str(e.value), "raw": e.raw}
+                for e in result.entities
+            ],
+            "slots": [
+                {"name": s.name, "required": s.required, "filled": s.filled, "value": s.value}
+                for s in result.slots
+            ],
             "trace": list(result.trace),
         })
 
-    elif mode == "simulate":
+    if mode == "simulate":
         result = pipeline.simulate(text, lang, context)
         return jsonify({
             "status": "simulated",
@@ -52,29 +69,35 @@ def api_nlu_understand():
             "feasible": result.overall_feasible,
             "warnings": list(result.warnings),
             "summary": result.summary,
-            "steps": [{"id": s.step_id, "tool": s.tool, "action": s.action, "ok": s.would_succeed} for s in result.steps],
+            "steps": [
+                {"id": s.step_id, "tool": s.tool, "action": s.action, "ok": s.would_succeed}
+                for s in result.steps
+            ],
         })
 
-    else:  # compile (default)
-        result = pipeline.compile(text, lang)
-        return jsonify({
-            "status": result.status,
-            "explanation": result.explanation,
-            "workflow": result.workflow,
-            "missing_slots": list(result.missing_slots),
-        })
+    # compile (default)
+    result = pipeline.compile(text, lang)
+    return jsonify({
+        "status": result.status,
+        "explanation": result.explanation,
+        "workflow": result.workflow,
+        "missing_slots": list(result.missing_slots),
+    })
 
 
 @bp.route("/api/workflows/chat", methods=["POST"])
 @login_required
-def api_chat():
-    """Chat endpoint — usa HATRouter (Nivel 1) para procesar mensajes."""
+def api_chat() -> Any:
+    """Chat endpoint — usa HATRouter (Nivel 1) para procesar mensajes.
+
+    Este es el endpoint principal de chat. Usa HAT (5 niveles de orquestación)
+    con ORBITAL como cerebro central. No usa NLU.
+    """
     data = request.get_json() or {}
     message = data.get("message", data.get("text", "")).strip()
     if not message:
         return jsonify({"error": "Message is required"}), 400
 
-    # M8: Usar HATRouter (sistema HAT de 5 niveles)
     from src.hat import get_hat_router
     try:
         hat_router = get_hat_router()
@@ -93,11 +116,13 @@ def api_chat():
 @login_required
 def api_nlu_ai_generate():
     """Genera un workflow usando IA.
-    Modos:
-    - ai: Genera workflow con LLM
-    - hybrid: Intenta determinista primero, fallback a IA
-    - deterministic: Solo usa el compilador determinista
+
+    Legacy: usa NLU Pipeline + AI config. En futura versión será
+    reemplazado por AutoPilotService de HAT Level 5.
     """
+    from src.nlu.ai_config import get_ai_config
+    from src.nlu.pipeline import Pipeline
+
     data = request.get_json() or {}
     text = data.get("text", "")
     mode = data.get("mode", "hybrid")
@@ -140,7 +165,7 @@ def api_nlu_ai_generate():
             "validation_errors": ai_result.validation_errors,
         })
 
-    # ── Modo hybrid ─────────────────────────────────────────
+    # hybrid mode
     det_result = pipeline.compile(text, lang)
     if det_result.status == "ready" and det_result.workflow:
         return jsonify({
@@ -168,7 +193,7 @@ def api_nlu_ai_generate():
     return jsonify({
         "status": det_result.status,
         "source": "deterministic",
-        "explanation": det_result.explanation or "No pude generar un workflow para tu solicitud.",
+        "explanation": det_result.explanation or "No pude generar un workflow.",
         "workflow": {},
         "missing_slots": list(det_result.missing_slots),
         "ai_provider": ai_config.active_provider.value if ai_config.is_ai_available() else "none",

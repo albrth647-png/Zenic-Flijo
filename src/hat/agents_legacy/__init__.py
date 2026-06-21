@@ -1,43 +1,34 @@
-"""HAT — Agents Legacy (migrado desde src/agents/ en M5).
+"""HAT Agents Legacy — DEPRECATED.
 
-Contiene el framework de agentes heredado que aún usan:
-- src/api_v2/routers/agents.py (MultiAgentOrchestrator, AgentRuntime)
-- src/hat/level3_specialists/base/specialist_agent.py (BaseAgent)
+Este módulo contiene el framework de agents anterior a HAT v2.
+Esta marcado como DEPRECATED — no usar en codigo nuevo.
 
-Estos archivos se mantienen por compatibilidad hasta que M6/M8
-implementen specialists reales que no dependan de BaseAgent.
+HAT v2 reemplaza esta funcionalidad con:
+- Nivel 2: Supervisores (routing por dominio)
+- Nivel 3: Specialists (1 responsabilidad cada uno)
+- Nivel 4: Workers (auto-generados con circuit breaker)
+- Nivel 5: Tools (19 tools ZF reales)
 
-Migrado en M5 desde:
-- src/agents/base.py → src/hat/agents_legacy/base.py
-- src/agents/orchestrator.py → src/hat/agents_legacy/orchestrator.py
-- src/agents/runtime.py → src/hat/agents_legacy/runtime.py
-- src/agents/token_tracking.py → src/core/observability/token_tracking.py
+Para nuevo codigo, usar:
+    from src.hat import bootstrap_hat
+    hat_router = bootstrap_hat(event_bus=event_bus)
 
-Eliminados en M5 (huérfanos):
-- src/agents/memory.py (fake embeddings, 0 callers)
-- src/agents/tools.py (AgentToolRegistry, 0 callers)
+Este modulo se mantiene solo para compatibilidad con tests existentes
+y el endpoint /api/v2/agents. Se eliminara en una futura version.
 """
-from src.hat.agents_legacy.base import (
-    AgentCapability,
-    AgentConfig,
-    AgentMessage,
-    AgentState,
-    BaseAgent,
-    VALID_TRANSITIONS,
+import warnings
+
+warnings.warn(
+    "src.hat.agents_legacy is deprecated. Use HAT v2 (src.hat.bootstrap_hat) instead.",
+    DeprecationWarning,
+    stacklevel=2,
 )
-from src.hat.agents_legacy.orchestrator import (
-    OrchestrationPattern,
-    OrchestrationPlan,
-    OrchestrationResult,
-    OrchestrationStrategy,
-    MultiAgentOrchestrator,
-)
-from src.hat.agents_legacy.runtime import AgentRuntime, RuntimeStats
+
+from src.hat.agents_legacy.base import BaseAgent, AgentConfig, AgentCapability
+from src.hat.agents_legacy.orchestrator import MultiAgentOrchestrator, OrchestrationPattern
+from src.hat.agents_legacy.runtime import AgentRuntime
 
 __all__ = [
-    "AgentCapability", "AgentConfig", "AgentMessage", "AgentState",
-    "BaseAgent", "VALID_TRANSITIONS",
-    "OrchestrationPattern", "OrchestrationPlan", "OrchestrationResult",
-    "OrchestrationStrategy", "MultiAgentOrchestrator",
-    "AgentRuntime", "RuntimeStats",
+    "BaseAgent", "AgentConfig", "AgentCapability",
+    "MultiAgentOrchestrator", "OrchestrationPattern", "AgentRuntime",
 ]
