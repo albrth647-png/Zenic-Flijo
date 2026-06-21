@@ -19,11 +19,13 @@ Hereda de CardPublisherMixin para poder publicar AgentCards al OVC + DB.
 """
 
 from __future__ import annotations
+
+import contextlib
 from abc import ABC, abstractmethod
 from typing import Any
 
-from src.hat.level3_specialists.base.cards import AgentCard
 from src.hat.level3_specialists.base.card_publisher import CardPublisherMixin
+from src.hat.level3_specialists.base.cards import AgentCard
 
 
 class SpecialistAgent(ABC, CardPublisherMixin):
@@ -80,10 +82,8 @@ class SpecialistAgent(ABC, CardPublisherMixin):
 
         try:
             # 1. Publicar card (idempotente — se skip si ya existe)
-            try:
+            with contextlib.suppress(Exception):
                 self.publish_card()
-            except Exception as exc:
-                pass  # no bloquear si publish falla
 
             # 2. Decidir acción
             tool_name, action_name, params = self.route_action(subtask)
@@ -145,7 +145,13 @@ class SpecialistAgent(ABC, CardPublisherMixin):
 
     @property
     def available_tools(self) -> list[str]:
+        """Retorna la lista de nombres de tools disponibles para este specialist."""
         return list(self._tools.keys())
 
     def __repr__(self) -> str:
-        return f"<{type(self).__name__} name={self.specialist_name} responsibility={self.responsibility}>"
+        """Retorna representación compacta del specialist."""
+        return (
+            f"<{type(self).__name__} "
+            f"name={self.specialist_name} "
+            f"responsibility={self.responsibility}>"
+        )

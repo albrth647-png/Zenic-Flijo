@@ -26,8 +26,8 @@ import inspect
 from typing import Any
 
 from src.core.logging import get_logger
-from src.hat.level4_workers.base.tool_worker import ToolWorker
 from src.hat.level4_workers.base.registry import WorkerRegistry
+from src.hat.level4_workers.base.tool_worker import ToolWorker
 
 logger = get_logger("hat.level4.worker_factory")
 
@@ -72,7 +72,7 @@ class WorkerFactory:
         """
         workers: dict[str, ToolWorker] = {}
 
-        for method_name, method in inspect.getmembers(tool_instance, predicate=inspect.ismethod):
+        for method_name, _method in inspect.getmembers(tool_instance, predicate=inspect.ismethod):
             # Skip private methods
             if method_name.startswith("_"):
                 continue
@@ -118,7 +118,10 @@ class WorkerFactory:
         tools = get_tools_registry().list_all()
 
         if not tools:
-            logger.warning("WorkerFactory: no hay tools registradas — llama a ToolsRegistry.register_all() primero")
+            logger.warning(
+            "WorkerFactory: no hay tools registradas — "
+            "llama a ToolsRegistry.register_all() primero"
+        )
             return {}
 
         all_workers: dict[str, dict[str, ToolWorker]] = {}

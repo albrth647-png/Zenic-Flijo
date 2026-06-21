@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from src.core.logging import get_logger
 
@@ -195,15 +195,18 @@ class ToolsRegistry:
     Tanto el WorkflowEngine como el SpecialistsRegistry consultan este registry.
     """
 
-    _instance: "ToolsRegistry | None" = None
+    _instance: ToolsRegistry | None = None
+    _tools: dict[str, Any]
+    _specs: dict[str, ToolRegistration]
 
-    def __new__(cls) -> "ToolsRegistry":
+    def __new__(cls) -> ToolsRegistry:
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._tools: dict[str, Any] = {}
-            cls._instance._specs: dict[str, ToolRegistration] = {
+            instance = super().__new__(cls)
+            instance._tools = {}
+            instance._specs = {
                 reg.name: reg for reg in _REGISTRY
             }
+            cls._instance = instance
         return cls._instance
 
     def register_all(self, event_bus: Any = None) -> dict[str, Any]:

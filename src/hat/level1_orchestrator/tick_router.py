@@ -21,34 +21,29 @@ import time
 import uuid
 from typing import Any
 
+from src.core.logging import setup_logging
+from src.hat.level1_orchestrator.fsm.disambiguator import CLARIFY_DOMAIN
+from src.hat.level1_orchestrator.intent.hasher import compute_intent_hash
 from src.hat.level1_orchestrator.ledger.ovc_bridge import OVCLedgerBridge
 from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
-from src.hat.level1_orchestrator.fsm.disambiguator import CLARIFY_DOMAIN, fsm_disambiguate
-from src.hat.level1_orchestrator.intent.hasher import compute_intent_hash
+from src.hat.level1_orchestrator.routing import KeywordRouter, OrbitalRouter
 from src.orbital.context import OrbitalContext
-from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
-# Threshold para invocar FSM de desambiguación.
+# Threshold para invocar FSM de desambiguación (mantenido para compatibilidad).
 _DISAMBIGUATION_THRESHOLD = 0.15
 
 
 def _get_supervisor_classes() -> dict[str, type]:
     """Retorna mapeo domain → supervisor class (solo fallback).
 
-    Lazy imports para evitar dependencias circulares. En producción,
-    bootstrap.py inyecta supervisor INSTANCES directamente a HATRouter.
-    Esta función solo se usa si se instancia HATRouter() sin supervisors.
+    M8 hardening: eliminados los lazy imports a Level 2 para respetar
+    la arquitectura de 5 niveles (L1 no debe conocer L2 directamente).
+    En producción, bootstrap_hat() inyecta supervisor INSTANCES.
+    Si se instancia HATRouter() sin supervisors, retorna dict vacío.
     """
-    from src.hat.level2_supervisors.operaciones import OperacionesSupervisor
-    from src.hat.level2_supervisors.comunicaciones import ComunicacionesSupervisor
-    from src.hat.level2_supervisors.datos_auto import DatosAutoSupervisor
-    return {
-        "operaciones": OperacionesSupervisor,
-        "comunicaciones": ComunicacionesSupervisor,
-        "datos_auto": DatosAutoSupervisor,
-    }
+    return {}
 
 
 class HATRouter:
@@ -72,11 +67,6 @@ class HATRouter:
             ctx: OrbitalContext. None → usa singleton.
             bridge: OVCLedgerBridge. None → crea uno con ledger+ctx.
             supervisors: dict domain→supervisor instance. None → vacío {}.
-                En producción, bootstrap.py inyecta supervisor INSTANCES
-                (OperacionesSupervisor, ComunicacionesSupervisor, DatosAutoSupervisor)
-                con sus specialists ya configurados. Si supervisors=None, el
-                router funciona pero no puede despachar tareas a ningún dominio
-                (debe usarse bootstrap_hat() en su lugar).
         """
         self._ledger = ledger if ledger is not None else LedgerRepository()
         self._ctx = ctx if ctx is not None else OrbitalContext()  # type: ignore[no-untyped-call]
@@ -84,8 +74,12 @@ class HATRouter:
             repo=self._ledger, ctx=self._ctx,
         )
         # Supervisores del Nivel 2 inyectados por bootstrap.py.
-        # Si None, se deja vacío; bootstrap_hat() siempre pasa supervisors.
         self._supervisors = supervisors if supervisors is not None else {}
+        # Routers extraídos en M8 (routing orbital + keyword override).
+        self._orbital_router = OrbitalRouter(ctx=self._ctx)
+        self._keyword_router = KeywordRouter()
+        # Session ID actual para namespacing OVC (seteado en handle()).
+        self._current_session_id: str = "default"
 
     def handle(
         self,
@@ -120,21 +114,17 @@ class HATRouter:
         intent_hash = compute_intent_hash(user_id, session_id, message, context)
         params = context or {}
 
-        # Fix sistémico #1: establecer session_id para namespacing OVC
+        # M8: establecer session_id en los routers extraídos.
         self._set_current_session(session_id)
 
         # FIX CRÍTICO M8: cargar sesión ANTES de ruteo orbital.
-        # _route_by_orbital() necesita Agent Cards publicadas en el OVC,
-        # las cuales se cargan vía load_session() desde el Ledger.
-        # Anteriormente se llamaba _route_by_orbital() primero, lo que
-        # resultaba en top3=[] (sin cards) y siempre caía a CLARIFY_DOMAIN.
         self._bridge.load_session(user_id, session_id)
 
-        # 1. Anti-doble-llamada cascade (5 capas)
-        # Primero ruteo rápido para obtener domain, luego cascade completo.
-        top3 = self._route_by_orbital(message)
+        # M8: ruteo delegado a OrbitalRouter + KeywordRouter.
+        top3 = self._orbital_router.route(message)
         active_domain = self._get_active_domain(user_id, session_id)
-        domain = self._disambiguate(top3, message, active_domain)
+        self._keyword_router.set_active_domain(active_domain)
+        domain = self._keyword_router.disambiguate(top3, message)
 
         anti_dup_result = self._run_anti_dup_cascade(
             intent_hash, user_id, session_id, message, domain,
@@ -265,154 +255,43 @@ class HATRouter:
         if action == "return_cache" and cached is not None:
             return f"Resultado cacheado (capa: {layer}): {cached}"
         if action == "subscribe":
-            return f"Tu solicitud está siendo procesada. Te notificaremos cuando termine (capa: {layer})."
+            return (
+                f"Tu solicitud está siendo procesada. "
+                f"Te notificaremos cuando termine (capa: {layer})."
+            )
         if action == "discard":
-            return f"Detectamos un doble-click. Ignorando la solicitud duplicada (capa: {layer})."
+            return (
+                f"Detectamos un doble-click. "
+                f"Ignorando la solicitud duplicada (capa: {layer})."
+            )
         if action == "confirm":
-            return f"Tu solicitud parece similar a una anterior. ¿Confirmas que quieres procesarla de nuevo? (capa: {layer})"
+            return (
+                f"Tu solicitud parece similar a una anterior. "
+                f"¿Confirmas que quieres procesarla de nuevo? (capa: {layer})"
+            )
         if action == "fallback":
-            return f"El dominio solicitado tiene problemas temporales. Usando fallback (capa: {layer})."
+            return (
+                f"El dominio solicitado tiene problemas temporales. "
+                f"Usando fallback (capa: {layer})."
+            )
         return f"Solicitud bloqueada por anti-doble-llamada (capa: {layer})."
 
-    def _route_by_orbital(self, message: str) -> list[tuple[str, float]]:
-        """Inyecta user_intent como variable OVC y ejecuta run_tick para ruteo.
-
-        Crea un ciclo orbital entre el user_intent y los Agent Cards disponibles,
-        ejecuta run_tick, y retorna los 3 dominios con mayor resonancia RCC.
-
-        Uses session-namespaced variable names to avoid cross-session pollution.
-
-        Args:
-            message: Texto normalizado del usuario.
-
-        Returns:
-            Lista de tuplas (domain, resonance_strength) ordenada desc.
-            Vacía si no hay Agent Cards registradas.
-        """
-        # Fix sistémico #1: usar prefijo de sesión para namespacing
-        intent_var_name = self._get_intent_var_name()
-
-        # Limpiar variable de ruteo anterior de esta sesión
-        existing = self._ctx.ovc.get_variable(intent_var_name)
-        if existing is not None:
-            self._ctx.ovc.delete_variable(intent_var_name)
-
-        # Crear variable orbital para el user_intent (namespaced)
-        try:
-            self._ctx.ovc.create_variable(
-                name=intent_var_name,
-                theta=0.0,
-                amplitude=1.0,
-                velocity=0.1,
-                orbit_group="hat_routing",
-                metadata={"type": "user_intent", "text": message},
-            )
-        except ValueError:
-            pass  # ya existe (race condition rara)
-
-        # Recopilar Agent Cards por dominio (filtrar por metadata, no por nombre)
-        cards_by_domain = self._collect_cards_by_domain()
-        if not cards_by_domain:
-            return []
-
-        # Para cada dominio, calcular resonancia con user_intent
-        resonances: list[tuple[str, float]] = []
-        for domain, card_vars in cards_by_domain.items():
-            resonance = self._compute_domain_resonance(domain, card_vars)
-            resonances.append((domain, resonance))
-
-        # Ordenar desc y tomar top 3
-        resonances.sort(key=lambda x: x[1], reverse=True)
-        return resonances[:3]
-
-    def _get_intent_var_name(self) -> str:
-        """Retorna el nombre namespaced de la variable OVC de user_intent.
-
-        Fix sistémico #1: cada sesión tiene su propia variable user_intent
-        en vez de una global, evando cross-session pollution.
-
-        Returns:
-            Nombre en formato 'hat_<session_id>__user_intent_current'.
-        """
-        session_id = getattr(self, "_current_session_id", "default")
-        safe_id = "".join(c if c.isalnum() else "_" for c in str(session_id))
-        return f"hat_{safe_id}__user_intent_current"
-
     def _set_current_session(self, session_id: str) -> None:
-        """Establece el session_id actual para namespacing de variables OVC.
+        """Establece el session_id en ambos routers extraídos (M8).
 
-        Debe llamarse al inicio de handle() antes de cualquier operación OVC.
+        Delega a ``OrbitalRouter.set_session()``. El KeywordRouter es stateless
+        respecto a la sesión (no namespacing), solo se le pasa active_domain.
         """
         self._current_session_id = session_id
+        self._orbital_router.set_session(session_id)
 
-    def _collect_cards_by_domain(self) -> dict[str, list[str]]:
-        """Agrupa las variables OVC de tipo agent_card por dominio.
+    def _route_by_orbital(self, message: str) -> list[tuple[str, float]]:
+        """Delegado a ``OrbitalRouter.route()`` (M8).
 
-        Fix sistémico #2: filtra por metadata.type='agent_card' en vez de
-        por prefijo de nombre, para soportar cards con cualquier naming
-        (publish_card crea 'card_<id>', load_session crea 'hat_<sess>__card_<id>').
-
-        Returns:
-            Dict domain → lista de nombres de variables OVC.
+        Mantenido como wrapper fino para compatibilidad con tests existentes
+        que llaman ``hat_router._route_by_orbital()`` directamente.
         """
-        result: dict[str, list[str]] = {}
-        for name, var in self._ctx.ovc.get_all_variables().items():
-            metadata = var.metadata or {}
-            if metadata.get("type") != "agent_card":
-                continue
-            domain = metadata.get("domain", "unknown")
-            result.setdefault(domain, []).append(name)
-        return result
-
-    def _compute_domain_resonance(self, domain: str, card_vars: list[str]) -> float:
-        """Calcula la resonancia promedio de un dominio con user_intent.
-
-        Usa TOR entre user_intent y cada card del dominio, promedia los valores.
-
-        Args:
-            domain: Nombre del dominio.
-            card_vars: Nombres de variables OVC de las cards del dominio.
-
-        Returns:
-            Resonancia promedio en [0, 1].
-        """
-        if not card_vars:
-            return 0.0
-        intent_var_name = self._get_intent_var_name()
-        user_intent = self._ctx.ovc.get_variable(intent_var_name)
-        if user_intent is None:
-            return 0.0
-        total, max_possible = self._accumulate_resonance(
-            card_vars, user_intent, intent_var_name,
-        )
-        if max_possible <= 0:
-            return 0.0
-        return min(total / max_possible, 1.0)
-
-    def _accumulate_resonance(
-        self, card_vars: list[str], user_intent: Any, intent_var_name: str,
-    ) -> tuple[float, float]:
-        """Acumula TOR entre user_intent y cada card. Retorna (total, max_possible).
-
-        Args:
-            card_vars: Nombres de variables OVC de las cards.
-            user_intent: VariableOrbital del user_intent.
-            intent_var_name: Nombre de la variable user_intent (namespaced).
-        """
-        tor = self._ctx.tor
-        total = 0.0
-        max_possible = 0.0
-        for card_var_name in card_vars:
-            card_var = self._ctx.ovc.get_variable(card_var_name)
-            if card_var is None:
-                continue
-            max_possible += card_var.amplitude * user_intent.amplitude
-            try:
-                result = tor.calculate(intent_var_name, card_var_name)
-                total += abs(result.tor_value)
-            except Exception:
-                continue
-        return total, max_possible
+        return self._orbital_router.route(message)
 
     def _disambiguate(
         self,
@@ -420,62 +299,12 @@ class HATRouter:
         message: str,
         active_domain: str | None,
     ) -> str:
-        """Aplica clear-winner check + FSM desambiguación si es necesario.
+        """Delegado a ``KeywordRouter.disambiguate()`` (M8).
 
-        M10.1 fix: keyword-based routing override. Si el mensaje contiene
-        keywords explícitas de un dominio presente en top3, ese dominio
-        gana directamente (sin pasar por clear-winner check del FSM).
-        Esto corrige el caso donde la resonancia ORBITAL no depende del
-        texto del mensaje y siempre retorna el mismo dominio.
-
-        Args:
-            top3: Top-3 dominios por resonancia.
-            message: Texto del usuario.
-            active_domain: Dominio activo del Ledger (Fact "active_domain").
-
-        Returns:
-            Dominio ganador: 'operaciones' | 'comunicaciones' | 'datos_auto' | 'clarify'.
-            'clarify' si no hay Agent Cards o FSM no resuelve.
+        Mantenido como wrapper fino para compatibilidad con tests existentes.
         """
-        if not top3:
-            return CLARIFY_DOMAIN
-        # M10.1: keyword override — si el mensaje tiene keywords explícitas
-        # de un dominio en top3, ese dominio gana.
-        keyword_domain = self._match_keyword_domain(message, top3)
-        if keyword_domain is not None:
-            return keyword_domain
-        return fsm_disambiguate(top3, message, active_domain)
-
-    @staticmethod
-    def _match_keyword_domain(
-        message: str,
-        top3: list[tuple[str, float]],
-    ) -> str | None:
-        """Retorna el dominio del top3 cuyas keywords aparecen en el mensaje.
-
-        Solo considera dominios presentes en top3 (no todo el catalog).
-        Si múltiples dominios matchean, retorna el de mayor resonancia.
-
-        Args:
-            message: Texto del usuario (case-insensitive).
-            top3: Top-3 dominios por resonancia.
-
-        Returns:
-            Nombre del dominio o None si ningún keyword matchea.
-        """
-        from src.hat.level1_orchestrator.fsm.disambiguator import (
-            DOMAIN_KEYWORDS, VALID_DOMAINS,
-        )
-        if not isinstance(message, str) or not message:
-            return None
-        text_lower = message.lower()
-        for domain, _score in top3:
-            if domain not in VALID_DOMAINS:
-                continue
-            keywords = DOMAIN_KEYWORDS.get(domain, ())
-            if any(kw in text_lower for kw in keywords):
-                return domain
-        return None
+        self._keyword_router.set_active_domain(active_domain)
+        return self._keyword_router.disambiguate(top3, message)
 
     def _dispatch_to_supervisor(
         self, domain: str, subtask: dict[str, Any],

@@ -198,11 +198,14 @@ app = FastAPI(
 
 # ── CORS Middleware ────────────────────────────────────────────
 
-_cors_origins = os.environ.get("WFD_API_V2_CORS_ORIGINS", "").split(",")
-_cors_allow_all = len(_cors_origins) == 1 and _cors_origins[0] == ""
+_cors_env = os.environ.get("WFD_API_V2_CORS_ORIGINS", "")
+if _cors_env:
+    _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+else:
+    # Default seguro: solo localhost en desarrollo
+    _cors_origins = ["http://localhost:8080", "http://localhost:3000", "http://127.0.0.1:8080"]
 
-# En producción, CORS debe ser explícito. Por defecto, no permitir orígenes arbitrarios.
-allow_origins = [] if _cors_allow_all else _cors_origins
+allow_origins = _cors_origins
 
 # Métodos HTTP estándar REST — explícitos, sin wildcard
 _cors_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]

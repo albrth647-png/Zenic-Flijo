@@ -14,8 +14,6 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.hat.level1_orchestrator.tick_router import HATRouter
-
 router = APIRouter(prefix="/api/hat", tags=["hat"])
 
 
@@ -49,13 +47,17 @@ class HATResponse(BaseModel):
 async def chat(request: HATRequest) -> HATResponse:
     """Endpoint principal HAT.
 
-    Procesa el mensaje del usuario a través del HATRouter:
+    Procesa el mensaje del usuario a través del HATRouter singleton:
     1. Calcula intent_hash (anti-doble capa 1+2)
     2. Carga sesión del Ledger
     3. Ruteo por resonancia ORBITAL
     4. FSM desambiguación si necesario
     5. Despacha al supervisor del dominio ganador
     6. Persiste + sintetiza respuesta
+
+    M8 hardening: usa ``get_hat_router()`` singleton en vez de instanciar
+    ``HATRouter()`` en cada request — evita crear Ledgers/Contextos
+    duplicados y reduce latencia.
 
     Args:
         request: HATRequest con user_id, session_id, message y context opcional.
@@ -64,10 +66,15 @@ async def chat(request: HATRequest) -> HATResponse:
         HATResponse con la respuesta sintetizada.
 
     Raises:
+        HTTPException 400: Si el request es inválido (ValueError).
         HTTPException 500: Si el HATRouter falla internamente.
     """
     try:
-        router_instance = HATRouter()
+        # M8 hardening: singleton HATRouter via get_hat_router()
+        # evita instanciar en cada request (LedgerRepository, OrbitalContext, etc.)
+        from src.hat.bootstrap import get_hat_router
+
+        router_instance = get_hat_router()
         result = router_instance.handle(
             user_id=request.user_id,
             session_id=request.session_id,
@@ -77,6 +84,8 @@ async def chat(request: HATRequest) -> HATResponse:
         return HATResponse(**result)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions sin envolver
     except Exception as exc:
         raise HTTPException(
             status_code=500,

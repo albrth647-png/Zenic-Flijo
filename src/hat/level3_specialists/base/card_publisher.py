@@ -22,11 +22,11 @@ from __future__ import annotations
 
 import hashlib
 
-from src.hat.level3_specialists.base.cards import AgentCard
+from src.core.logging import setup_logging
 from src.hat.level1_orchestrator.ledger.repository import LedgerRepository
+from src.hat.level3_specialists.base.cards import AgentCard
 from src.orbital.context import OrbitalContext
 from src.orbital.models import TWO_PI
-from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 
@@ -55,7 +55,7 @@ class CardPublisherMixin:
 
     def publish_card(
         self,
-        repo: LedgerRepository | None = None,
+        _repo: LedgerRepository | None = None,  # compat, no usado (M9 eliminó persistencia)
         ctx: OrbitalContext | None = None,
     ) -> AgentCard:
         """Publica la AgentCard en OVC (memoria).
@@ -66,7 +66,7 @@ class CardPublisherMixin:
         Idempotente: si la variable OVC ya existe, se skip (no duplica).
 
         Args:
-            repo: LedgerRepository. Mantenido por compat — ya no se usa para
+            _repo: LedgerRepository. Mantenido por compat — ya no se usa para
                 persistir cards, pero algunas subclases podrían seguir pasándolo.
             ctx: OrbitalContext. None → usa el singleton existente.
 

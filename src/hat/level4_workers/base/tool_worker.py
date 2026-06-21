@@ -40,7 +40,7 @@ class ToolWorker:
 
     def __init__(self, tool_instance: Any) -> None:
         self.tool = tool_instance
-        self.method = getattr(tool_instance, self.action_name, None)
+        self.method: Any = getattr(tool_instance, self.action_name, None)
 
         if self.method is None:
             raise AttributeError(
@@ -173,4 +173,7 @@ class ToolWorker:
         return "open"
 
     def __repr__(self) -> str:
-        return f"<{type(self).__name__} tool={self.tool_name} action={self.action_name} circuit={self.circuit_state}>"
+        return (
+            f"<{type(self).__name__} tool={self.tool_name} "
+            f"action={self.action_name} circuit={self.circuit_state}>"
+        )
