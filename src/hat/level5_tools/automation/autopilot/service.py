@@ -3,8 +3,8 @@ Workflow Determinista — AutoPilot Service
 Plantillas predefinidas de automatización para empezar rápido.
 """
 
-from src.nlu.intent_classifier import IntentClassifier
-from src.nlu.templates import TEMPLATES
+from src.hat.level5_tools.automation.autopilot.intent_classifier import IntentClassifier
+from src.hat.level5_tools.automation.autopilot.templates import TEMPLATES
 from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
@@ -43,7 +43,7 @@ class AutoPilotService:
         template = next((t for t in TEMPLATES if t["name"] == template_name), None)
         if not template:
             raise ValueError(f"Template '{template_name}' no encontrado")
-        from src.workflow.repository import WorkflowDefinition, WorkflowRepository
+        from src.hat.level5_tools.automation.autopilot.workflow_repository import WorkflowDefinition, WorkflowRepository
 
         repo = WorkflowRepository()
         wf = WorkflowDefinition(

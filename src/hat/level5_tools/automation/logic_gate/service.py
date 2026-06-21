@@ -9,7 +9,7 @@ import json
 from src.core.db.sqlite_manager import DatabaseManager
 from src.events.bus import EventBus
 from src.core.logging import setup_logging
-from src.workflow.condition_evaluator import ConditionEvaluator
+from src.hat.level5_tools.automation.logic_gate.condition_evaluator import ConditionEvaluator
 
 logger = setup_logging(__name__)
 
