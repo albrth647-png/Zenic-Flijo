@@ -86,6 +86,10 @@ def create_app() -> Flask:
     # Registrar todos los blueprints
     register_blueprints(app)
 
+    # Foso 3: Webhooks MP + WhatsApp
+    from src.web.routes.webhooks import webhooks_bp
+    app.register_blueprint(webhooks_bp)
+
     # ── SPA: React frontend ──────────────────────────────────
 
     @app.route("/app/<path:path>")
