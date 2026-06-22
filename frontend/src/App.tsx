@@ -25,6 +25,7 @@ import OrbitalPage from "@/pages/OrbitalPage"
 import PartnersPage from "@/pages/PartnersPage"
 import AirgapPage from "@/pages/AirgapPage"
 import MiNegocioPage from "@/pages/MiNegocioPage"
+import FacturacionElectronicaPage from "@/pages/FacturacionElectronicaPage"
 
 export default function App() {
   return (
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="partners" element={<PartnersPage />} />
             <Route path="airgap" element={<AirgapPage />} />
             <Route path="mi-negocio" element={<MiNegocioPage />} />
+            <Route path="facturacion-electronica" element={<FacturacionElectronicaPage />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 

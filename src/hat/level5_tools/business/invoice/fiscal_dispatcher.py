@@ -99,7 +99,9 @@ class _DictAuthProvider:
 
     Los connectors LATAM usan self._auth_provider.get_credentials() para
     obtener cuit/rfc/cnpj/cert_path/etc. Este adapter cumple ese contrato
-    sin requerir el AuthProvider completo del SDK.
+    sin requerir el AuthProvider completo del SDK. Implementa también
+    get_auth_type(), is_expired() y refresh() que BaseConnector invoca en
+    _build_auto_schema() y connect().
     """
 
     def __init__(self, credentials: dict[str, Any]) -> None:
@@ -110,6 +112,18 @@ class _DictAuthProvider:
 
     def get_credentials(self) -> dict[str, Any]:
         return self._creds
+
+    def get_auth_type(self) -> str:
+        """Tipo de autenticación — mTLS para connectors fiscales LATAM."""
+        return "mtls"
+
+    def is_expired(self) -> bool:
+        """Credenciales dict no expiran (se rotan reemplazando el dict)."""
+        return False
+
+    def refresh(self) -> bool:
+        """No-op — las credenciales son estáticas."""
+        return True
 
 
 # ── FiscalDispatcher ─────────────────────────────────────────────────
