@@ -117,6 +117,7 @@ class TelemetryService(
 
     _instance: TelemetryService | None = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> TelemetryService:
         if cls._instance is None:

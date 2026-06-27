@@ -55,6 +55,7 @@ class RedisService:
 
     _instance: RedisService | None = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> RedisService:
         if cls._instance is None:

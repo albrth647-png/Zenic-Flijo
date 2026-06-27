@@ -107,6 +107,7 @@ class MetricsRegistry:
 
     _instance: MetricsRegistry | None = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> MetricsRegistry:
         if cls._instance is None:

@@ -40,6 +40,7 @@ class MongoDBService:
 
     _instance: MongoDBService | None = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> MongoDBService:
         if cls._instance is None:
@@ -240,7 +241,7 @@ class MongoDBService:
 
     # ── CRUD — Update ────────────────────────────────────────
 
-    async def update_one(self, collection: str, query: dict[str, Any], update: dict[str, Any], upsert: bool = False) -> dict:
+    async def update_one(self, collection: str, query: dict[str, Any], update: dict[str, Any], upsert: bool = False) -> dict[str, Any]:
         """
         Actualiza un unico documento.
 
@@ -270,7 +271,7 @@ class MongoDBService:
         logger.debug(f"update_one en {collection}: matched={result.matched_count}, modified={result.modified_count}")
         return response
 
-    async def update_many(self, collection: str, query: dict[str, Any], update: dict[str, Any]) -> dict:
+    async def update_many(self, collection: str, query: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
         """
         Actualiza multiples documentos.
 

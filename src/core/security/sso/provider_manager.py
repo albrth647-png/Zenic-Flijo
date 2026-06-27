@@ -61,7 +61,7 @@ def ensure_tables(db: DatabaseManager) -> None:
     conn.commit()
 
 
-def configure_provider(db: DatabaseManager, name: str, provider_type: str, config: dict[str, Any]) -> dict:
+def configure_provider(db: DatabaseManager, name: str, provider_type: str, config: dict[str, Any]) -> dict[str, Any]:
     """Configura o actualiza un proveedor SSO."""
     if provider_type not in VALID_TYPES:
         return {"status": "error", "message": f"Tipo invalido. Validos: {', '.join(sorted(VALID_TYPES))}"}

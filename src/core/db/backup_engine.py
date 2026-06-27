@@ -72,6 +72,7 @@ class BackupEngine:
 
     # Lock para coordinar start/stop del timer de auto-backup.
     _auto_lock = threading.Lock()
+    _initialized: bool
 
     def __new__(cls) -> "BackupEngine":
         if cls._instance is None:

@@ -7,6 +7,7 @@ Compatibilidad retroactiva con el sistema de 3 roles (admin/editor/viewer).
 import contextlib
 import json
 import threading
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 from src.core.db.sqlite_manager import DatabaseManager
@@ -79,6 +80,7 @@ class RBACManager:
 
     _instance: "RBACManager | None" = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> "RBACManager":
         if cls._instance is None:
@@ -519,7 +521,7 @@ class RBACManager:
 # ── Decorador Flask para permisos ─────────────────────────
 
 
-def require_permission(resource: str, action: str):
+def require_permission(resource: str, action: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorador Flask: requiere un permiso especifico para acceder a la ruta.
 
     Verifica los permisos del usuario actual contra el RBAC granular.
@@ -540,9 +542,9 @@ def require_permission(resource: str, action: str):
 
     from flask import jsonify, session
 
-    def decorator(f):
+    def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(f)
-        def decorated(*args, **kwargs):
+        def decorated(*args: Any, **kwargs: Any) -> Any:
             if "user" not in session:
                 return jsonify({"error": "No autenticado"}), 401
 

@@ -55,6 +55,7 @@ class SSOService:
 
     _instance: SSOService | None = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> SSOService:
         if cls._instance is None:
@@ -80,7 +81,7 @@ class SSOService:
 
     # ── Gestion de proveedores ────────────────────────────
 
-    def configure_provider(self, name: str, provider_type: str, config: dict[str, Any]) -> dict:
+    def configure_provider(self, name: str, provider_type: str, config: dict[str, Any]) -> dict[str, Any]:
         return configure_provider(self._db, name, provider_type, config)
 
     def get_providers(self) -> list[dict[str, Any]]:
@@ -171,7 +172,7 @@ class SSOService:
 
     # ── Mapeo de usuarios ─────────────────────────────────
 
-    def create_or_link_user(self, provider_name: str, external_id: str, user_info: dict[str, Any]) -> dict:
+    def create_or_link_user(self, provider_name: str, external_id: str, user_info: dict[str, Any]) -> dict[str, Any]:
         return create_or_link_user(self._db, provider_name, external_id, user_info)
 
     def link_existing_user(self, user_id: int, provider_name: str, external_id: str) -> dict[str, Any]:
@@ -190,6 +191,6 @@ class SSOService:
 
     # ── Routes ────────────────────────────────────────────
 
-    def register_routes(self, app) -> None:
+    def register_routes(self, app: Any) -> None:
         """Registra las rutas SSO Flask. Conveniencia sobre register_sso_routes()."""
         register_sso_routes(app, self._db)

@@ -42,6 +42,7 @@ class EncryptionService:
 
     _instance: EncryptionService | None = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> EncryptionService:
         if cls._instance is None:

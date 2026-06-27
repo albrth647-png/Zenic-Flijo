@@ -46,7 +46,7 @@ class SettingsRepository:
 
     # ── CRUD ─────────────────────────────────────────────────
 
-    def get_setting(self, key: str, default=None):
+    def get_setting(self, key: str, default: Any = None) -> Any:
         """
         Obtiene un valor de settings con parseo JSON automático.
 

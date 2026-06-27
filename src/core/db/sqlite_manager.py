@@ -38,6 +38,7 @@ class DatabaseManager(DatabaseInterface):
 
     _instance: "DatabaseManager | None" = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> "DatabaseManager":
         if cls._instance is None:
@@ -708,23 +709,23 @@ class DatabaseManager(DatabaseInterface):
 
     # ── Operaciones generales ────────────────────────────────
 
-    def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
         """Ejecuta una consulta SQL."""
         conn = self.get_connection()
         return conn.execute(sql, params)
 
-    def executemany(self, sql: str, params_list: list[tuple]) -> sqlite3.Cursor:
+    def executemany(self, sql: str, params_list: list[tuple[Any, ...]]) -> sqlite3.Cursor:
         """Ejecuta una consulta SQL con multiples parametros."""
         conn = self.get_connection()
         return conn.executemany(sql, params_list)
 
-    def fetchone(self, sql: str, params: tuple = ()) -> dict[str, Any] | None:
+    def fetchone(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         """Ejecuta una consulta y retorna una fila como dict[str, Any]."""
         cursor = self.execute(sql, params)
         row = cursor.fetchone()
         return dict[str, Any](row) if row else None
 
-    def fetchall(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+    def fetchall(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
         """Ejecuta una consulta y retorna todas las filas como lista de dicts."""
         cursor = self.execute(sql, params)
         return [dict[str, Any](row) for row in cursor.fetchall()]
@@ -764,7 +765,7 @@ class DatabaseManager(DatabaseInterface):
     # Delegan a los nuevos repositorios. Se eliminaran en Phase 4.5
     # cuando todos los consumidores se hayan migrado.
 
-    def get_setting(self, key: str, default=None):
+    def get_setting(self, key: str, default: Any = None) -> Any:
         """Wrapper: delega a SettingsRepository."""
         return self._settings.get_setting(key, default)
 

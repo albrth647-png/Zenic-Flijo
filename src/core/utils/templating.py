@@ -6,6 +6,7 @@ Split de ``src/utils/helpers.py`` (M1.4).
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -55,7 +56,7 @@ def resolve_variables(template: str, context: dict[str, Any]) -> str | int | flo
         return value  # Preserva el tipo original (int, float, list, dict[str, Any], etc.)
 
     # Caso general: template con texto + variables
-    def replacer(match):
+    def replacer(match: re.Match[str]) -> str:
         path = match.group(1)
         value = safe_get(context, path)
         if value is None:

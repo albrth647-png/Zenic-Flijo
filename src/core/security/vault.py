@@ -11,6 +11,7 @@ import json
 import os
 import threading
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from src.core.logging import setup_logging
@@ -33,12 +34,19 @@ VAULT_SALT_SIZE = 32
 VAULT_VERSION = 1
 VAULT_FILENAME = ".vault"
 
-class VaultError(Exception): pass
-class VaultLockedError(VaultError): pass
-class VaultAuthError(VaultError): pass
+
+class VaultError(Exception): ...
+class VaultLockedError(VaultError): ...
+class VaultAuthError(VaultError): ...
+
 
 class SecretVault:
-    def __init__(self, vault_path=None):
+    _key: bytes | None
+    _secrets: dict[str, Any]
+    _salt: bytes | None
+    _available: bool
+
+    def __init__(self, vault_path: str | Path | None = None) -> None:
         if vault_path is None:
             from src.core.config import DATA_DIR
             vault_path = DATA_DIR / VAULT_FILENAME
@@ -50,67 +58,110 @@ class SecretVault:
         self._available = _CRYPTOGRAPHY_AVAILABLE
         if not self._available:
             logger.warning("SecretVault: cryptography no disponible.")
+
     @property
-    def is_available(self): return self._available
+    def is_available(self) -> bool:
+        return self._available
+
     @property
-    def is_unlocked(self): return self._key is not None
+    def is_unlocked(self) -> bool:
+        return self._key is not None
+
     @property
-    def exists(self): return self._path.exists()
-    def unlock(self, password):
-        if not self._available: raise VaultError("cryptography no disponible")
+    def exists(self) -> bool:
+        return self._path.exists()
+
+    def unlock(self, password: str) -> None:
+        if not self._available:
+            raise VaultError("cryptography no disponible")
         with self._lock:
-            if self.exists: self._load(password)
-            else: self._init(password)
-    def lock(self):
-        with self._lock: self._key = None; self._secrets = {}
-    def change_password(self, old_password, new_password):
+            if self.exists:
+                self._load(password)
+            else:
+                self._init(password)
+
+    def lock(self) -> None:
         with self._lock:
-            if not self.exists: raise VaultError("Vault no existe")
+            self._key = None
+            self._secrets = {}
+
+    def change_password(self, old_password: str, new_password: str) -> None:
+        with self._lock:
+            if not self.exists:
+                raise VaultError("Vault no existe")
             self.unlock(old_password)
             secrets_copy = dict[str, Any](self._secrets)
             self._salt = os.urandom(VAULT_SALT_SIZE)
             self._key = self._derive_key(new_password, self._salt)
             self._secrets = secrets_copy
             self._save()
-    def get(self, key, default=None):
-        if self._key is None: raise VaultLockedError("Vault no desbloqueado.")
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if self._key is None:
+            raise VaultLockedError("Vault no desbloqueado.")
         with self._lock:
             encrypted = self._secrets.get(key)
-            if encrypted is None: return default
+            if encrypted is None:
+                return default
             aesgcm = AESGCM(self._key)
             nonce = base64.b64decode(encrypted["nonce"])
             ciphertext = base64.b64decode(encrypted["ciphertext"])
             plaintext = aesgcm.decrypt(nonce, ciphertext, None)
             return json.loads(plaintext.decode("utf-8"))
-    def set[Any](self, key, value):
-        if self._key is None: raise VaultLockedError("Vault no desbloqueado.")
+
+    def set(self, key: str, value: Any) -> None:
+        if self._key is None:
+            raise VaultLockedError("Vault no desbloqueado.")
         with self._lock:
             aesgcm = AESGCM(self._key)
             nonce = os.urandom(GCM_NONCE_SIZE)
             plaintext = json.dumps(value, default=str, ensure_ascii=False).encode("utf-8")
             ciphertext = aesgcm.encrypt(nonce, plaintext, None)
-            self._secrets[key] = {"nonce": base64.b64encode(nonce).decode(), "ciphertext": base64.b64encode(ciphertext).decode()}
+            self._secrets[key] = {
+                "nonce": base64.b64encode(nonce).decode(),
+                "ciphertext": base64.b64encode(ciphertext).decode(),
+            }
             self._save()
-    def delete(self, key):
-        if self._key is None: raise VaultLockedError("Vault no desbloqueado.")
+
+    def delete(self, key: str) -> bool:
+        if self._key is None:
+            raise VaultLockedError("Vault no desbloqueado.")
         with self._lock:
-            if key in self._secrets: del self._secrets[key]; self._save(); return True
+            if key in self._secrets:
+                del self._secrets[key]
+                self._save()
+                return True
             return False
-    def has(self, key):
-        if self._key is None: raise VaultLockedError("Vault no desbloqueado.")
+
+    def has(self, key: str) -> bool:
+        if self._key is None:
+            raise VaultLockedError("Vault no desbloqueado.")
         return key in self._secrets
-    def list_keys(self):
-        if self._key is None: raise VaultLockedError("Vault no desbloqueado.")
-        return list[Any](self._secrets.keys())
-    def _derive_key(self, password, salt):
-        return PBKDF2HMAC(algorithm=hashes.SHA256(), length=AES_KEY_SIZE, salt=salt, iterations=PBKDF2_ITERATIONS).derive(password.encode("utf-8"))
-    def _init(self, password):
+
+    def list_keys(self) -> list[str]:
+        if self._key is None:
+            raise VaultLockedError("Vault no desbloqueado.")
+        return list(self._secrets.keys())
+
+    def _derive_key(self, password: str, salt: bytes) -> bytes:
+        return PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=AES_KEY_SIZE,
+            salt=salt,
+            iterations=PBKDF2_ITERATIONS,
+        ).derive(password.encode("utf-8"))
+
+    def _init(self, password: str) -> None:
         self._salt = os.urandom(VAULT_SALT_SIZE)
         self._key = self._derive_key(password, self._salt)
-        self._secrets = {}; self._save()
-    def _load(self, password):
-        with open(self._path) as f: data = json.load(f)
-        if data.get("version") != VAULT_VERSION: raise VaultError("Version no soportada")
+        self._secrets = {}
+        self._save()
+
+    def _load(self, password: str) -> None:
+        with open(self._path) as f:
+            data = json.load(f)
+        if data.get("version") != VAULT_VERSION:
+            raise VaultError("Version no soportada")
         self._salt = base64.b64decode(data["salt"])
         self._key = self._derive_key(password, self._salt)
         verification = data.get("verification")
@@ -120,13 +171,28 @@ class SecretVault:
                 nonce = base64.b64decode(verification["nonce"])
                 ct = base64.b64decode(verification["ciphertext"])
                 aesgcm.decrypt(nonce, ct, None)
-            except Exception as e: self._key = None; raise VaultAuthError("Password incorrecto") from e
+            except Exception as e:
+                self._key = None
+                raise VaultAuthError("Password incorrecto") from e
         self._secrets = data.get("secrets", {})
-    def _save(self):
+
+    def _save(self) -> None:
+        assert self._key is not None  # solo llamada tras _init() o _load()
         aesgcm = AESGCM(self._key)
         nonce = os.urandom(GCM_NONCE_SIZE)
         verification_ct = aesgcm.encrypt(nonce, b"VALID", None)
-        data = {"version": VAULT_VERSION, "salt": base64.b64encode(self._salt).decode() if self._salt else "", "pbkdf2_iterations": PBKDF2_ITERATIONS, "verification": {"nonce": base64.b64encode(nonce).decode(), "ciphertext": base64.b64encode(verification_ct).decode()}, "secrets": self._secrets}
+        data = {
+            "version": VAULT_VERSION,
+            "salt": base64.b64encode(self._salt).decode() if self._salt else "",
+            "pbkdf2_iterations": PBKDF2_ITERATIONS,
+            "verification": {
+                "nonce": base64.b64encode(nonce).decode(),
+                "ciphertext": base64.b64encode(verification_ct).decode(),
+            },
+            "secrets": self._secrets,
+        }
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._path, "w") as f: json.dump(data, f, indent=2, ensure_ascii=False)
-        with contextlib.suppress(OSError): self._path.chmod(0o600)
+        with open(self._path, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        with contextlib.suppress(OSError):
+            self._path.chmod(0o600)

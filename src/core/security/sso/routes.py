@@ -32,7 +32,7 @@ def register_sso_routes(app: Any, db: DatabaseManager | None = None) -> None:
     oidc_handler = OIDCHandler(db, redis)
 
     @app.route("/api/v1/auth/saml/<provider>/login")
-    def sso_saml_login(provider: str):
+    def sso_saml_login(provider: str) -> Any:
         """Inicia el flujo de login SAML redirigiendo al IdP."""
         from flask import jsonify, redirect
 
@@ -48,7 +48,7 @@ def register_sso_routes(app: Any, db: DatabaseManager | None = None) -> None:
         return redirect(result["redirect_url"])
 
     @app.route("/api/v1/auth/saml/<provider>/callback", methods=["POST"])
-    def sso_saml_callback(provider: str):
+    def sso_saml_callback(provider: str) -> Any:
         """Procesa la respuesta SAML del IdP."""
         from flask import jsonify, request, session
 
@@ -87,7 +87,7 @@ def register_sso_routes(app: Any, db: DatabaseManager | None = None) -> None:
         return jsonify({"status": "ok", "user": user, "sso_session_id": session_result["session_id"]})
 
     @app.route("/api/v1/auth/oidc/<provider>/login")
-    def sso_oidc_login(provider: str):
+    def sso_oidc_login(provider: str) -> Any:
         """Inicia el flujo de login OIDC redirigiendo al IdP."""
         from flask import jsonify, redirect
 
@@ -105,7 +105,7 @@ def register_sso_routes(app: Any, db: DatabaseManager | None = None) -> None:
         return redirect(result["redirect_url"])
 
     @app.route("/api/v1/auth/oidc/<provider>/callback")
-    def sso_oidc_callback(provider: str):
+    def sso_oidc_callback(provider: str) -> Any:
         """Procesa el callback OIDC tras la autorizacion del usuario."""
         from flask import jsonify, request, session
 
@@ -146,7 +146,7 @@ def register_sso_routes(app: Any, db: DatabaseManager | None = None) -> None:
         return jsonify({"status": "ok", "user": user, "sso_session_id": session_result["session_id"]})
 
     @app.route("/api/v1/auth/sso/providers")
-    def sso_list_providers():
+    def sso_list_providers() -> Any:
         from flask import jsonify
         rows = db.fetchall("SELECT id, name, type, enabled, created_at, updated_at FROM sso_providers ORDER BY name")
         providers = [
@@ -157,7 +157,7 @@ def register_sso_routes(app: Any, db: DatabaseManager | None = None) -> None:
         return jsonify({"providers": providers})
 
     @app.route("/api/v1/auth/sso/link", methods=["POST"])
-    def sso_link_account():
+    def sso_link_account() -> Any:
         from flask import jsonify, request, session
         if "user" not in session:
             return jsonify({"error": "No autenticado"}), 401

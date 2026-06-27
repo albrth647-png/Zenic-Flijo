@@ -53,6 +53,7 @@ class TracingManager:
 
     _instance: TracingManager | None = None
     _lock = threading.RLock()
+    _initialized: bool
 
     def __new__(cls) -> TracingManager:
         if cls._instance is None:
@@ -345,21 +346,21 @@ class _ComplianceAwareSampler:
             ...  # Este span SIEMPRE se muestrea
     """
 
-    def __init__(self, base_sampler):
+    def __init__(self, base_sampler: Any) -> None:
         self._base = base_sampler
         # Descripción usada por OpenTelemetry para logging/debug.
         self.description = f"ComplianceAwareSampler(base={getattr(base_sampler, 'description', 'TraceIdRatioBased')})"
 
     def should_sample(
         self,
-        parent_context,
-        trace_id,
-        name,
-        kind=None,
-        attributes=None,
-        links=None,
-        trace_state=None,
-    ):
+        parent_context: Any,
+        trace_id: int,
+        name: str,
+        kind: Any = None,
+        attributes: Any = None,
+        links: Any = None,
+        trace_state: Any = None,
+    ) -> Any:
         """Decide si muestrear el span. Si compliance_critical=True → siempre sí."""
         # Foso 1: si el span marca compliance_critical, forzar 100% sampling.
         if attributes and attributes.get("compliance_critical") is True:

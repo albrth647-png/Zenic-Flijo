@@ -97,7 +97,7 @@ def cleanup_expired_sessions(db: DatabaseManager, redis: RedisService) -> int:
 
 # ── User mapping ─────────────────────────────────────────────
 
-def create_or_link_user(db: DatabaseManager, provider_name: str, external_id: str, user_info: dict[str, Any]) -> dict:
+def create_or_link_user(db: DatabaseManager, provider_name: str, external_id: str, user_info: dict[str, Any]) -> dict[str, Any]:
     """Crea un usuario local o vincula un usuario IdP existente."""
     existing_mapping = db.fetchone(
         "SELECT user_id FROM sso_user_mapping WHERE provider_name = ? AND external_id = ?",

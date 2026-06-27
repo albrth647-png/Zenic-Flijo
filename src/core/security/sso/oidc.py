@@ -102,7 +102,7 @@ class OIDCHandler:
             "idp_session": id_token_claims.get("sid"),
         }
 
-    def _exchange_code(self, config: dict[str, Any], code: str, state_data: dict[str, Any]) -> dict:
+    def _exchange_code(self, config: dict[str, Any], code: str, state_data: dict[str, Any]) -> dict[str, Any]:
         """Intercambia el codigo de autorizacion OIDC por tokens."""
         token_url = config.get("token_url", "")
         client_id = config.get("client_id", "")
