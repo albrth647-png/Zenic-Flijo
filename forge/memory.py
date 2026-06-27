@@ -19,7 +19,31 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, cast
+
+
+class Reflection(TypedDict):
+    iteration_id: str
+    timestamp: str
+    summary: str
+    verbal_reflection: str
+    score: float
+    root_cause: str
+    files_affected: list[str]
+    key_learnings: list[str]
+
+
+class MemoryData(TypedDict, total=False):
+    version: str
+    reflections: list[Reflection]
+    created_at: str
+
+
+class MemoryStats(TypedDict, total=False):
+    total_reflections: int
+    avg_score: float
+    top_root_causes: list[tuple[str, int]]
+    top_files: list[tuple[str, int]]
 
 
 class PersistentMemory:
@@ -33,7 +57,7 @@ class PersistentMemory:
         if self.memory_path.exists():
             self._load()
         else:
-            self.data: dict[str, Any] = {
+            self.data: MemoryData = {
                 "version": "1.0",
                 "reflections": [],
                 "created_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -51,8 +75,8 @@ class PersistentMemory:
         root_cause: str = "",
         files_affected: list[str] | None = None,
         key_learnings: list[str] | None = None,
-    ) -> dict[str, Any]:
-        reflection = {
+    ) -> Reflection:
+        reflection: Reflection = {
             "iteration_id": iteration_id,
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "summary": summary[:500],
@@ -88,12 +112,12 @@ class PersistentMemory:
         union = keywords1 | keywords2
         return len(intersection) / len(union)
 
-    def find_similar(self, query: str, top_n: int = 5) -> list[dict[str, Any]]:
+    def find_similar(self, query: str, top_n: int = 5) -> list[Reflection]:
         if not self.data["reflections"]:
             return []
 
         query_keywords = self._extract_keywords(query)
-        scored = []
+        scored: list[tuple[float, Reflection]] = []
         for ref in self.data["reflections"]:
             ref_text = (
                 ref.get("summary", "")
@@ -110,33 +134,33 @@ class PersistentMemory:
 
     # ── Stats ─────────────────────────────────────────────────────────
 
-    def stats(self) -> dict[str, Any]:
+    def stats(self) -> MemoryStats:
         reflections = self.data["reflections"]
         if not reflections:
-            return {"total_reflections": 0}
-        return {
-            "total_reflections": len(reflections),
-            "avg_score": sum(r["score"] for r in reflections) / len(reflections),
-            "top_root_causes": self._top_items(
+            return MemoryStats(total_reflections=0)
+        return MemoryStats(
+            total_reflections=len(reflections),
+            avg_score=sum(r["score"] for r in reflections) / len(reflections),
+            top_root_causes=self._top_items(
                 [r["root_cause"] for r in reflections if r["root_cause"]]
             ),
-            "top_files": self._top_items([
+            top_files=self._top_items([
                 f for r in reflections for f in r.get("files_affected", [])
             ]),
-        }
+        )
 
     @staticmethod
     def _top_items(items: list[str], n: int = 5) -> list[tuple[str, int]]:
         return Counter(items).most_common(n)
 
-    def get_all_reflections(self) -> list[dict[str, Any]]:
+    def get_all_reflections(self) -> list[Reflection]:
         return self.data["reflections"]
 
     # ── I/O privado ───────────────────────────────────────────────────
 
     def _load(self) -> None:
         with open(self.memory_path) as f:
-            self.data = json.load(f)
+            self.data = cast(MemoryData, json.load(f))
 
     def _save(self) -> None:
         with open(self.memory_path, "w") as f:

@@ -26,9 +26,56 @@ import time
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 from forge.sandbox import ForgeSandbox
+
+
+class ScanIssue(TypedDict):
+    severity: str
+    message: str
+    line: int
+
+
+class CmdResult(TypedDict):
+    stdout: str
+    stderr: str
+    returncode: int
+
+
+class GateResultDict(TypedDict):
+    name: str
+    passed: bool
+    evidence: str
+    stack: str
+    duration: float
+    score: float
+
+
+class HardGateReport(TypedDict):
+    passed: bool
+    count: str
+    results: list[GateResultDict]
+
+
+class SoftGoalReport(TypedDict):
+    passed: bool
+    score: float
+    threshold: float
+    results: list[GateResultDict]
+
+
+class OverallReport(TypedDict):
+    passed: bool
+    hard_passed: bool
+    soft_passed: bool
+    soft_score: float
+
+
+class EvalReport(TypedDict):
+    hard_gates: HardGateReport
+    soft_goals: SoftGoalReport
+    overall: OverallReport
 
 
 class GateResult:
@@ -42,7 +89,7 @@ class GateResult:
         self.duration = duration
         self.score = score
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> GateResultDict:
         return {"name": self.name, "passed": self.passed, "evidence": self.evidence[:500], "stack": self.stack, "duration": round(self.duration, 2), "score": round(self.score, 1)}
 
     def __repr__(self) -> str:
@@ -62,45 +109,45 @@ class SecurityScanner:
     }
 
     @classmethod
-    def scan_python(cls, file_path: Path) -> list[dict[str, Any]]:
-        issues = []
+    def scan_python(cls, file_path: Path) -> list[ScanIssue]:
+        issues: list[ScanIssue] = []
         try:
             with open(file_path) as f:
                 content = f.read()
             tree = ast.parse(content, filename=str(file_path))
         except (SyntaxError, UnicodeDecodeError):
-            return [{"severity": "error", "message": f"Cannot parse {file_path}"}]
+            return [ScanIssue(severity="error", message=f"Cannot parse {file_path}", line=0)]
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name) and node.func.id in ("eval", "exec", "__import__"):
-                    issues.append({"severity": "high", "message": f"{node.func.id}() detectado en línea {node.lineno}", "line": node.lineno})
+                    issues.append(ScanIssue(severity="high", message=f"{node.func.id}() detectado en línea {node.lineno}", line=node.lineno))
                 elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess":
                     for kw in node.keywords:
                         if kw.arg == "shell" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
-                            issues.append({"severity": "high", "message": f"subprocess.{node.func.attr}() con shell=True en línea {node.lineno}", "line": node.lineno})
+                            issues.append(ScanIssue(severity="high", message=f"subprocess.{node.func.attr}() con shell=True en línea {node.lineno}", line=node.lineno))
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name in ("pickle", "subprocess", "shutil"):
-                        issues.append({"severity": "medium", "message": f"import {alias.name} en línea {node.lineno}", "line": node.lineno})
+                        issues.append(ScanIssue(severity="medium", message=f"import {alias.name} en línea {node.lineno}", line=node.lineno))
             if isinstance(node, ast.ImportFrom) and node.module in ("pickle", "subprocess"):
-                issues.append({"severity": "medium", "message": f"from {node.module} import en línea {node.lineno}", "line": node.lineno})
+                issues.append(ScanIssue(severity="medium", message=f"from {node.module} import en línea {node.lineno}", line=node.lineno))
 
         secret_patterns = [(r"(?i)(api_key|apikey|secret|token|password)\s*=\s*['\"][A-Za-z0-9_\-]{16,}", "Posible secreto hardcodeado")]
         lines = content.split("\n")
         for i, line in enumerate(lines, 1):
             for pattern, desc in secret_patterns:
                 if re.search(pattern, line):
-                    issues.append({"severity": "high", "message": f"{desc} en línea {i}", "line": i})
+                    issues.append(ScanIssue(severity="high", message=f"{desc} en línea {i}", line=i))
         return issues
 
     @classmethod
-    def scan_typescript(cls, file_path: Path) -> list[dict[str, Any]]:
-        issues = []
+    def scan_typescript(cls, file_path: Path) -> list[ScanIssue]:
+        issues: list[ScanIssue] = []
         try:
             content = file_path.read_text()
         except Exception:
-            return [{"severity": "error", "message": f"Cannot read {file_path}"}]
+            return [ScanIssue(severity="error", message=f"Cannot read {file_path}", line=0)]
 
         patterns = [
             (r"eval\s*\(", "high", "eval() detectado"),
@@ -113,7 +160,7 @@ class SecurityScanner:
         for i, line in enumerate(lines, 1):
             for pattern, severity, desc in patterns:
                 if re.search(pattern, line):
-                    issues.append({"severity": severity, "message": f"{desc} en línea {i}", "line": i})
+                    issues.append(ScanIssue(severity=severity, message=f"{desc} en línea {i}", line=i))
         return issues
 
 
@@ -293,15 +340,20 @@ class GateRunner:
         ratio = test_files / max(src_files, 1)
         return GateResult("test_quality", ratio >= self.MIN_TEST_QUALITY_RATIO, f"Test ratio: {ratio:.1%}", stack, time.time() - start, min(ratio / self.MIN_TEST_QUALITY_RATIO * 10, 10))
 
-    def run_all(self, stacks: list[str] | None = None, sandbox: ForgeSandbox | None = None) -> dict[str, Any]:
+    EXPENSIVE_GATES = {"mutation_score", "coverage_branch"}
+
+    def run_all(self, stacks: list[str] | None = None, sandbox: ForgeSandbox | None = None, exclude: set[str] | None = None) -> EvalReport:
         if stacks is None:
             stacks = [s for s, flag in [("python", self.has_python), ("typescript", self.has_typescript)] if flag]
         if sandbox:
             self.sandbox = sandbox
+        exclude = exclude or set()
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = []
             for gate_name in self.HARD_GATES + self.SOFT_GOALS:
+                if gate_name in exclude:
+                    continue
                 for stack in stacks:
                     method = getattr(self, f"gate_{gate_name}", None)
                     if method:
@@ -314,18 +366,18 @@ class GateRunner:
                     print(f"Gate error: {e}")
         return self.evaluate()
 
-    def evaluate(self) -> dict[str, Any]:
+    def evaluate(self) -> EvalReport:
         hard = [r for r in self.results.values() if r.name in self.HARD_GATES]
         soft = [r for r in self.results.values() if r.name in self.SOFT_GOALS]
         hard_passed = all(r.passed for r in hard)
         total_w = sum(self.SOFT_WEIGHTS.get(r.name, 1.0) for r in soft)
         weighted = sum(r.score * self.SOFT_WEIGHTS.get(r.name, 1.0) for r in soft)
         soft_score = weighted / total_w if total_w > 0 else 0.0
-        return {
-            "hard_gates": {"passed": hard_passed, "count": f"{sum(1 for r in hard if r.passed)}/{len(hard)}", "results": [r.to_dict() for r in hard]},
-            "soft_goals": {"passed": soft_score >= self.SOFT_PASS_THRESHOLD, "score": round(soft_score, 2), "threshold": self.SOFT_PASS_THRESHOLD, "results": [r.to_dict() for r in soft]},
-            "overall": {"passed": hard_passed and soft_score >= self.SOFT_PASS_THRESHOLD, "hard_passed": hard_passed, "soft_passed": soft_score >= self.SOFT_PASS_THRESHOLD, "soft_score": round(soft_score, 2)},
-        }
+        return EvalReport(
+            hard_gates=HardGateReport(passed=hard_passed, count=f"{sum(1 for r in hard if r.passed)}/{len(hard)}", results=[r.to_dict() for r in hard]),
+            soft_goals=SoftGoalReport(passed=soft_score >= self.SOFT_PASS_THRESHOLD, score=round(soft_score, 2), threshold=self.SOFT_PASS_THRESHOLD, results=[r.to_dict() for r in soft]),
+            overall=OverallReport(passed=hard_passed and soft_score >= self.SOFT_PASS_THRESHOLD, hard_passed=hard_passed, soft_passed=soft_score >= self.SOFT_PASS_THRESHOLD, soft_score=round(soft_score, 2)),
+        )
 
     def print_report(self) -> None:
         ev = self.evaluate()
@@ -345,7 +397,7 @@ class GateRunner:
         print(f"     Hard: {'PASS' if ev['overall']['hard_passed'] else 'FAIL'} | Soft: {'PASS' if ev['overall']['soft_passed'] else 'FAIL'} ({ev['overall']['soft_score']:.1f}/10)")
         print("=" * 60 + "\n")
 
-    def _run_cmd(self, cmd: list[str], cwd: str | Path, timeout: int = 120) -> dict[str, Any]:
+    def _run_cmd(self, cmd: list[str], cwd: str | Path, timeout: int = 120) -> CmdResult:
         try:
             proc = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
             return {"stdout": proc.stdout, "stderr": proc.stderr, "returncode": proc.returncode}
@@ -353,3 +405,30 @@ class GateRunner:
             return {"stdout": "", "stderr": f"TIMEOUT after {timeout}s", "returncode": -1}
         except FileNotFoundError:
             return {"stdout": "", "stderr": f"Command not found: {' '.join(cmd)}", "returncode": -1}
+
+
+def self_test(project_root: str | Path | None = None, stacks: list[str] | None = None) -> EvalReport:
+    """Ejecuta self-test de todos los gates sobre un directorio temporal."""
+    import tempfile
+
+    root = Path(project_root) if project_root else Path(tempfile.mkdtemp())
+    created_tmp = False
+
+    if not project_root:
+        created_tmp = True
+        (root / "src").mkdir(parents=True)
+        (root / "src" / "module.py").write_text("x = 1\ny = 2\nprint(x + y)\n")
+        (root / "src" / "tests").mkdir()
+        (root / "src" / "tests" / "test_module.py").write_text(
+            "def test_x(): assert 1 + 1 == 2\n"
+        )
+
+    runner = GateRunner(root)
+    report = runner.run_all(stacks=stacks or ["python"], exclude=set(runner.EXPENSIVE_GATES))
+    runner.print_report()
+
+    if created_tmp and project_root is None:
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+
+    return report

@@ -13,10 +13,10 @@ from __future__ import annotations
 import contextlib
 from typing import Any
 
+from src.core.logging import setup_logging
 from src.sdk.base import BaseConnector
 from src.sdk.http_client import HttpClient, HTTPClientError
 from src.sdk.schema import ActionDefinition, AuthRequirement, ConnectorSchema
-from src.core.logging import setup_logging
 
 logger = setup_logging(__name__)
 

@@ -17,7 +17,75 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import NotRequired, TypedDict, cast
+
+
+class LedgerAction(TypedDict):
+    action_type: str
+    permission: str
+    target: str
+    diff_summary: str
+    before_sha: str
+    after_sha: str
+    rollback: str
+    verified: bool
+    timestamp: str
+    rolled_back: NotRequired[bool]
+    rollback_reason: NotRequired[str]
+
+
+class Approval(TypedDict):
+    phase: str
+    approved_by: str
+    timestamp: str
+    notes: str
+
+
+class GateProof(TypedDict):
+    gate_name: str
+    passed: bool
+    evidence: str
+    stack: str
+    timestamp: str
+
+
+class LedgerMetadata(TypedDict):
+    hard_gates_passed: int
+    soft_score: float
+    total_files_changed: int
+    rollbacks_executed: int
+    canary_fixes_applied: int
+
+
+class LedgerData(TypedDict, total=False):
+    run_id: str
+    spec: str
+    created_at: str
+    updated_at: str
+    actions: list[LedgerAction]
+    approvals: list[Approval]
+    proof: list[GateProof]
+    final_status: str
+    metadata: LedgerMetadata
+    completed_at: str
+    rolled_back: bool
+    rollback_reason: str
+
+
+class LedgerSummary(TypedDict):
+    run_id: str
+    spec: str
+    final_status: str
+    total_actions: int
+    verified_actions: int
+    rolled_back: int
+    hard_gates_passed: int
+    soft_score: float
+    files_changed: int
+    canary_fixes: int
+    approvals: int
+    proof_count: int
+    is_complete: bool
 
 
 class RunLedger:
@@ -40,7 +108,7 @@ class RunLedger:
                     "HALT inmediato — el ledger está corrupto."
                 )
         else:
-            self.data: dict[str, Any] = {
+            self.data: LedgerData = {
                 "run_id": run_id,
                 "spec": "",
                 "created_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -77,7 +145,7 @@ class RunLedger:
         before_sha: str = "",
         after_sha: str = "",
         rollback: str = "",
-    ) -> dict[str, Any]:
+    ) -> LedgerAction:
         """Registra una acción del agente con su rollback.
 
         Args:
@@ -223,7 +291,7 @@ class RunLedger:
 
     # ── Final status ──────────────────────────────────────────────────
 
-    def complete(self, status: str = "pass") -> dict[str, Any]:
+    def complete(self, status: str = "pass") -> LedgerSummary:
         """Marca el ledger como completo.
 
         Args:
@@ -237,7 +305,7 @@ class RunLedger:
         self._save()
         return self.summary()
 
-    def summary(self) -> dict[str, Any]:
+    def summary(self) -> LedgerSummary:
         """Devuelve un resumen del ledger."""
         return {
             "run_id": self.data["run_id"],
@@ -279,8 +347,14 @@ class RunLedger:
     # ── I/O privado ───────────────────────────────────────────────────
 
     def _load(self) -> None:
-        with open(self.ledger_path) as f:
-            self.data = json.load(f)
+        try:
+            with open(self.ledger_path) as f:
+                self.data = cast(LedgerData, json.load(f))
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                f"RUN LEDGER CORRUPTED: {self.ledger_path}. "
+                f"JSON inválido: {e}. HALT inmediato."
+            ) from e
 
     def _save(self) -> None:
         with open(self.ledger_path, "w") as f:

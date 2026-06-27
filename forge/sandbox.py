@@ -28,7 +28,28 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
+
+
+class RunResult(TypedDict):
+    stdout: str
+    stderr: str
+    returncode: int
+    duration: float
+    timed_out: bool
+
+
+class StopStats(TypedDict):
+    run_id: str
+    duration_seconds: float
+    processes_spawned: int
+    sandbox_root: str
+
+
+class LogEvent(TypedDict):
+    event: str
+    data: object
+    timestamp: str
 
 
 class ForgeSandbox:
@@ -197,9 +218,9 @@ class ForgeSandbox:
         timeout: int = 300,
         env: dict[str, str] | None = None,
         capture_output: bool = True,
-    ) -> dict[str, Any]:
+    ) -> RunResult:
         if self._stopped:
-            return {"stdout": "", "stderr": "Sandbox stopped", "returncode": -1, "duration": 0.0, "timed_out": False}
+            return RunResult(stdout="", stderr="Sandbox stopped", returncode=-1, duration=0.0, timed_out=False)
 
         cwd = Path(cwd) if cwd else self.workdir
         env = env or self.sanitized_env()
@@ -231,17 +252,17 @@ class ForgeSandbox:
             timed_out = True
             self._log_event("process_timeout", {"cmd": cmd_str, "timeout": timeout})
 
-        result = {
-            "stdout": (stdout or ""),
-            "stderr": (stderr or ""),
-            "returncode": proc.returncode,
-            "duration": round(duration, 2),
-            "timed_out": timed_out,
-        }
-        self._log_event("process_end", result)
+        result = RunResult(
+            stdout=(stdout or ""),
+            stderr=(stderr or ""),
+            returncode=proc.returncode,
+            duration=round(duration, 2),
+            timed_out=timed_out,
+        )
+        self._log_event("process_end", dict(result))
         return result
 
-    def run_python(self, code: str, workdir_subdir: str | None = None, timeout: int = 60) -> dict[str, Any]:
+    def run_python(self, code: str, workdir_subdir: str | None = None, timeout: int = 60) -> RunResult:
         cwd = self.workdir
         if workdir_subdir:
             cwd = self.workdir / workdir_subdir
@@ -258,7 +279,7 @@ class ForgeSandbox:
         self._log_event("sandbox_start", {"ram_gb": self.ram_gb})
         (self.sandbox_root / "home").mkdir(parents=True, exist_ok=True)
 
-    def stop(self) -> dict[str, Any]:
+    def stop(self) -> StopStats:
         self._stopped = True
         for proc in self._processes:
             if proc.poll() is None:
@@ -268,8 +289,8 @@ class ForgeSandbox:
                 except Exception:
                     pass
         duration = time.time() - self._started_at if self._started_at else 0.0
-        stats = {"run_id": self.run_id, "duration_seconds": round(duration, 2), "processes_spawned": len(self._processes), "sandbox_root": str(self.sandbox_root)}
-        self._log_event("sandbox_stop", stats)
+        stats = StopStats(run_id=self.run_id, duration_seconds=round(duration, 2), processes_spawned=len(self._processes), sandbox_root=str(self.sandbox_root))
+        self._log_event("sandbox_stop", dict(stats))
         return stats
 
     def cleanup(self) -> None:
@@ -286,12 +307,12 @@ class ForgeSandbox:
 
     # ── Utils ─────────────────────────────────────────────────────────
 
-    def _log_event(self, event: str, data: dict[str, Any]) -> None:
+    def _log_event(self, event: str, data: object) -> None:
         log_file = self.sandbox_root / "sandbox.log"
         with open(log_file, "a") as f:
             f.write(json.dumps({"event": event, "data": data, "timestamp": datetime.now(tz=timezone.utc).isoformat()}) + "\n")
 
-    def get_logs(self) -> list[dict[str, Any]]:
+    def get_logs(self) -> list[LogEvent]:
         log_file = self.sandbox_root / "sandbox.log"
         if not log_file.exists():
             return []

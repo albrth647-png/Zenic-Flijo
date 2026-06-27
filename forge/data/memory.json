@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "reflections": [
+    {
+      "iteration_id": "forge-phase0-hardening",
+      "timestamp": "2026-06-27T04:06:56.822855+00:00",
+      "summary": "Fase 0 completa: 147 tests, CLI, self-test, TypedDict migration",
+      "verbal_reflection": "Se completó el hardening de forge/ con 4 módulos (gates, run_ledger, memory, sandbox), 147 tests unitarios, CLI con 5 comandos, self-test funcional, y migración completa de Any→TypedDict. La lección principal es que separar la planificación (Prometheus) de la ejecución (Sisyphus) es crucial para mantener la calidad. El RuntimeWarning al hacer python -m forge.gates se solucionó eliminando el __main__ block y redirigiendo a forge/cli.py.",
+      "score": 9.0,
+      "root_cause": "N/A — trabajo planificado, no bug fix",
+      "files_affected": [
+        "forge/gates.py",
+        "forge/run_ledger.py",
+        "forge/memory.py",
+        "forge/sandbox.py",
+        "forge/cli.py",
+        "forge/__main__.py",
+        "forge/tests/test_sandbox.py",
+        "forge/tests/test_gates.py",
+        "forge/tests/test_run_ledger.py"
+      ],
+      "key_learnings": [
+        "TypedDict > Any para contractos de datos",
+        "CLI con argparse + __main__ es el entry point correcto",
+        "EXPENSIVE_GATES deben excluirse de self-test",
+        "TS gates sin node_modules deben detectarse gracefulmente",
+        "self_test() no debe crear dirs temporales con frontend (npx cuelga)"
+      ]
+    },
+    {
+      "iteration_id": "forge-any-migration",
+      "timestamp": "2026-06-27T04:06:56.823628+00:00",
+      "summary": "Migración Any→TypedDict en 4 módulos forge/ — 0 Any restantes",
+      "verbal_reflection": "Se reemplazaron 25+ ocurrencias de Any con TypedDicts estrictos en gates.py, run_ledger.py, memory.py y sandbox.py. Los TypedDicts con total=False permiten campos opcionales, cast() se usa en json.load() para compatibilidad. La migración fue limpia porque todos los Tipos ya tenían estructura conocida — solo faltaba codificarlos.",
+      "score": 8.5,
+      "root_cause": "N/A — mejora de calidad de tipos",
+      "files_affected": [
+        "forge/gates.py",
+        "forge/run_ledger.py",
+        "forge/memory.py",
+        "forge/sandbox.py"
+      ],
+      "key_learnings": [
+        "TypedDict con total=False para campos opcionales",
+        "cast() de json.load a TypedDict es necesario",
+        "Dict[str, Any] → TypedDict concreto mejora mantenibilidad",
+        "Python 3.13 soporta TypedDict completamente"
+      ]
+    },
+    {
+      "iteration_id": "forge-runtimewarning-fix",
+      "timestamp": "2026-06-27T04:06:56.824285+00:00",
+      "summary": "Eliminado RuntimeWarning al importar gates.py directamente",
+      "verbal_reflection": "El __name__ == __main__ block en gates.py causaba RuntimeWarning al hacer python -m forge.gates porque re-importaba módulos ya cargados. Se eliminó el bloque y todo el entry point se movió a forge/__main__.py que llama forge/cli.py. Ahora python -m forge es el único entry point.",
+      "score": 7.0,
+      "root_cause": "Import cíclico con run_ledger.py y cli.py al ejecutar gates.py directamente",
+      "files_affected": [
+        "forge/gates.py"
+      ],
+      "key_learnings": [
+        "No poner __name__ == __main__ en módulos que son importados por CLI",
+        "Un solo entry point (__main__.py) evita warnings de import"
+      ]
+    }
+  ],
+  "created_at": "2026-06-27T04:06:56.815343+00:00"
+}
